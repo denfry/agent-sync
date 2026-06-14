@@ -12,6 +12,30 @@ coordination metadata in a SQLite database inside your repository at
   and writes the SQLite file directly.
 - **No credentials handled.** The tool does not read, store, or transmit secrets.
 
+## Trust and identity model
+
+agent-sync coordinates **cooperating** sessions run by a single trusting user on
+one machine. It is **not** a security boundary between mutually distrusting
+parties, and it does **not** authenticate agents.
+
+- **Identity is asserted, not verified.** An agent's id comes from the
+  `AGENT_SYNC_ID` environment variable, else a hash of the Claude Code session
+  id, else a per-repo file. Any local process can set `AGENT_SYNC_ID` to any
+  value and thereby *act as* any agent.
+- **Ownership checks prevent accidents, not attacks.** Task ownership, lock
+  ownership, and owner-only unlock stop two cooperating sessions from clobbering
+  each other. They do **not** stop a process that deliberately spoofs an id,
+  passes `--force`, or writes the SQLite file directly. Treat them as
+  collision-avoidance, not access control.
+- **The database is plaintext.** Anyone who can read
+  `.claude/coordination/state.sqlite` can read all coordination state; anyone who
+  can write it can forge any record. Coordination text from other agents is also
+  injected into your session's context, so it is wrapped in an explicit
+  untrusted-data frame — but treat it as untrusted regardless.
+
+If you need isolation between untrusted parties, run them as separate OS users
+with separate repositories; agent-sync does not provide that.
+
 ## Data sensitivity
 
 The coordination database stores **plaintext, shared operational state** that is
@@ -37,6 +61,20 @@ ignored and never crashes your session. The single intentional exception is the
 file is locked by another active agent — that is the desired behaviour, blocking
 the conflicting edit. Because hooks execute shell commands configured in your
 `.claude/settings.json`, only enable hook commands you trust and have reviewed.
+
+## Lock enforcement is advisory
+
+The `pre-tool-use` hook blocks edits **only** for the `Edit`, `Write` and
+`MultiEdit` tools (its matcher). A lock is a cooperation signal, not an OS-level
+file lock:
+
+- A shell command (`Bash` running `sed -i`, `>`, `cp`, `git checkout`, …) can
+  modify a locked file without tripping the hook.
+- A tool whose name is not in the matcher is not checked.
+- Not installing the hook, or removing it, disables enforcement entirely.
+
+Locks reliably prevent *honest* collisions between cooperating agents; they do
+not contain a session that ignores them.
 
 ## Reporting a vulnerability
 

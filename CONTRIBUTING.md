@@ -124,8 +124,28 @@ hand. When commits land on `main`, the `Release` workflow:
    publishes a GitHub Release with the built sdist/wheel attached.
 
 If nothing since the last release warrants a bump (only `docs`/`chore`/etc.), no
-release is made. To also publish to PyPI, add a Trusted Publisher (or
-`PYPI_TOKEN`) and a publish step to `release.yml` — it is intentionally left out.
+release is made.
+
+On a real release the package is also published to **PyPI** via
+[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC — no API
+token or secret is stored). This needs a one-time setup on PyPI.
+
+### PyPI Trusted Publisher (one-time)
+
+At <https://pypi.org/manage/project/claude-agent-sync/settings/publishing/> (or
+the "pending publisher" form before the project's first upload) add a GitHub
+publisher with:
+
+| Field | Value |
+| --- | --- |
+| Owner | `denfry` |
+| Repository | `agent-sync` |
+| Workflow name | `release.yml` |
+| Environment | `pypi` |
+
+No token goes into the repo. Until this is configured the `Publish to PyPI` job
+will fail (everything else — versioning, changelog, tag, GitHub Release — still
+succeeds); just re-run that job after registering the publisher.
 
 ## Reporting bugs / proposing features
 
