@@ -8,6 +8,24 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.1.2 (2026-06-14)
+
+### Bug Fixes
+
+- **render**: Frame coordination state as untrusted data to block cross-agent prompt injection
+  ([`f8f9b46`](https://github.com/denfry/agent-sync/commit/f8f9b46c297edc25af5b8f5a81d841db7e432155))
+
+### Continuous Integration
+
+- Publish to PyPI via Trusted Publishing on release
+  ([`f8e473a`](https://github.com/denfry/agent-sync/commit/f8e473a06a37b1150130997662717fb4c64ff071))
+
+### Documentation
+
+- **security**: Document trust/identity model and advisory lock enforcement
+  ([`04820b8`](https://github.com/denfry/agent-sync/commit/04820b82414156fd49d51446a7db885013efdc35))
+
+
 ## v0.1.1 (2026-06-14)
 
 ### Bug Fixes
