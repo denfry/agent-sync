@@ -1,0 +1,7 @@
+# Normalize line endings: store everything as LF in the repo.
+* text=auto eol=lf
+
+# Shell launcher and Python must stay LF so they work on Unix.
+skills/agent-sync/scripts/agent-sync text eol=lf
+*.py text eol=lf
+*.sh text eol=lf

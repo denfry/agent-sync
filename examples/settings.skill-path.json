@@ -1,0 +1,38 @@
+{
+  "//": "Alternative agent-sync settings that call the skill's bundled launcher directly instead of relying on the `agent-sync` console script being on PATH. Useful when the package is not pip-installed but importable via PYTHONPATH. The PreToolUse hook is the one that actually blocks conflicting edits (exit code 2); the others are optional but recommended.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/skills/agent-sync/scripts/agent-sync hook pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/skills/agent-sync/scripts/agent-sync hook post-tool-use"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/skills/agent-sync/scripts/agent-sync hook session-start"
+          }
+        ]
+      }
+    ]
+  }
+}

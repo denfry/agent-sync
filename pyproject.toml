@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-agent-sync"
+version = "0.1.0"
+description = "Coordinate multiple Claude Code sessions in the same repository with a shared SQLite coordination layer, a skill, and hooks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "claude-agent-sync contributors" }]
+keywords = ["claude", "claude-code", "agents", "coordination", "cli", "sqlite", "hooks"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
+# Runtime depends on the Python standard library only.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/denfry/agent-sync"
+Repository = "https://github.com/denfry/agent-sync"
+Issues = "https://github.com/denfry/agent-sync/issues"
+Changelog = "https://github.com/denfry/agent-sync/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+agent-sync = "agent_sync.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = "-ra"
+# Make the package importable from a source checkout without an editable install
+# so a bare `pytest -q` works from the repo root.
+pythonpath = ["src"]
+filterwarnings = ["error::DeprecationWarning:agent_sync.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

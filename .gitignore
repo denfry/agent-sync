@@ -1,0 +1,47 @@
+# agent-sync coordination state (per-repo, machine-local)
+.claude/coordination/
+
+# Claude Code per-machine local settings (may contain machine-specific paths)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+sdist/
+wheels/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / coverage / cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# SQLite WAL/SHM sidecar files
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

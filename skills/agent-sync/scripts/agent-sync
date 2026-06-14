@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""Cross-platform launcher for the agent-sync CLI.
+
+This thin wrapper lets Claude Code hooks call the CLI by path
+(``python .claude/skills/agent-sync/scripts/agent-sync ...``) without relying on
+the ``agent-sync`` console script being on ``PATH``. It simply delegates to
+``agent_sync.cli:main``.
+
+The package must be importable. Either:
+  * install it once with ``pip install claude-agent-sync`` (recommended), or
+  * set ``PYTHONPATH`` to the project's ``src`` directory.
+"""
+
+from __future__ import annotations
+
+import sys
+
+
+def _fail(message: str) -> "int":
+    sys.stderr.write(
+        "[agent-sync] " + message + "\n"
+        "Install it with `pip install claude-agent-sync` or add the project's "
+        "`src/` directory to PYTHONPATH.\n"
+    )
+    return 1
+
+
+def main() -> int:
+    try:
+        from agent_sync.cli import main as cli_main
+    except ImportError as exc:  # package not installed / not importable
+        return _fail(f"could not import agent_sync ({exc}).")
+    return cli_main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
