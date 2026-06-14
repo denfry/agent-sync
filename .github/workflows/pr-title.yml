@@ -1,0 +1,33 @@
+name: PR Title
+
+# Squash-merges use the PR title as the commit message, and that message drives
+# the next automated version bump — so the title must be a valid Conventional
+# Commit (e.g. "feat: ...", "fix(locks): ...").
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    name: Validate Conventional Commit title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            chore
+            style
+            revert

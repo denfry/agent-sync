@@ -95,13 +95,37 @@ with a `conn`, without going through `argparse`.
 4. Add tests in `tests/test_hooks_*.py`, passing the payload and a `conn`
    directly (no subprocess).
 
+## Commit messages
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/).
+The commit type drives the next version bump, so it matters:
+
+| Prefix | Example | Effect |
+| --- | --- | --- |
+| `fix:` | `fix: don't crash on an empty inbox` | patch release (`0.1.0` → `0.1.1`) |
+| `perf:` | `perf: batch lock lookups` | patch release |
+| `feat:` | `feat: add --json to status` | minor release (`0.1.0` → `0.2.0`) |
+| `feat!:` / `BREAKING CHANGE:` in body | | minor while `< 1.0`, major afterwards |
+| `docs:` `chore:` `refactor:` `test:` `ci:` `build:` `style:` | | no release |
+
+PRs are **squash-merged**, so the **PR title** must be a valid Conventional
+Commit — a CI check (`PR Title`) enforces this.
+
 ## Release process
 
-1. Update `CHANGELOG.md` (move items from *Unreleased* to the new version).
-2. Bump the version in `pyproject.toml` and `src/agent_sync/__init__.py`.
-3. Ensure `pytest` and CI are green on all supported Python versions.
-4. Tag the release (`git tag vX.Y.Z`) and build:
-   `python -m build` then `twine upload dist/*` (maintainers).
+Releases are **fully automated** — maintainers never bump the version or tag by
+hand. When commits land on `main`, the `Release` workflow:
+
+1. runs the full CI suite (ruff lint + tests on Python 3.10–3.12);
+2. computes the next version from the Conventional Commits since the last tag;
+3. updates the version in `pyproject.toml` and `src/agent_sync/__init__.py` and
+   prepends a section to `CHANGELOG.md`;
+4. commits the bump as `chore(release): vX.Y.Z [skip ci]`, tags `vX.Y.Z`, and
+   publishes a GitHub Release with the built sdist/wheel attached.
+
+If nothing since the last release warrants a bump (only `docs`/`chore`/etc.), no
+release is made. To also publish to PyPI, add a Trusted Publisher (or
+`PYPI_TOKEN`) and a publish step to `release.yml` — it is intentionally left out.
 
 ## Reporting bugs / proposing features
 

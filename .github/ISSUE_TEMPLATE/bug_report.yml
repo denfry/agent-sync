@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a problem with agent-sync
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in the details
+        below so we can reproduce it. Do **not** paste secrets — agent-sync
+        stores plaintext state (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact `agent-sync` commands (and any hook config) so we can reproduce it.
+      placeholder: |
+        1. agent-sync init
+        2. agent-sync register --name ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agent-sync version
+      description: Output of `agent-sync --version` (or the git tag/commit you're on).
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / logs
+      description: Paste any error output. Rendered as code automatically — no backticks needed.
+      render: shell

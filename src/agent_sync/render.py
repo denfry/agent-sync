@@ -170,10 +170,18 @@ def render_compact(conn: sqlite3.Connection, current_agent_id: str) -> str:
         items = "; ".join(f"{_short(t.title, 40)} (@{t.owner_agent_id})" for t in in_prog)
         lines.append(f"- in progress: {items}")
 
+    available = [t for t in open_tasks if t.status == "pending"]
+    if available:
+        titles = "; ".join(_short(t.title, 40) for t in available[:5])
+        more = f" (+{len(available) - 5} more)" if len(available) > 5 else ""
+        lines.append(
+            f"- available to claim: {titles}{more} — run `agent-sync claim-next`"
+        )
+
     if unread:
         lines.append(f"- you have {len(unread)} unread message(s): run `agent-sync inbox`")
 
-    if not others and not live_locks and not in_prog:
-        lines.append("- no other active agents, locks, or in-progress tasks")
+    if not others and not live_locks and not in_prog and not available:
+        lines.append("- no other active agents, locks, or tasks to pick up")
 
     return "\n".join(lines).rstrip() + "\n"

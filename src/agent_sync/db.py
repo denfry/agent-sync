@@ -15,10 +15,10 @@ import hashlib
 import os
 import sqlite3
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator
 
 from . import paths
 from .models import (
@@ -216,14 +216,24 @@ def resolve_agent_id(
 
     1. ``AGENT_SYNC_ID`` environment variable (explicit override).
     2. A deterministic hash of ``cwd`` + session id, so repeated calls within
-       one Claude Code session map to the same agent.
+       one Claude Code session map to the same agent. The session id comes from
+       the *session_id* argument (passed by hooks from their JSON payload) or,
+       when called from the skill/CLI outside a hook, from the
+       ``CLAUDE_CODE_SESSION_ID`` environment variable Claude Code exports into
+       every shell it spawns (``CLAUDE_SESSION_ID`` is accepted as a legacy
+       alias). This is what lets the skill auto-detect the active session: a hook
+       and a skill CLI call in the *same* window resolve to the *same* agent id.
     3. A persisted per-repo local id (``.claude/coordination/current-agent``).
     """
     explicit = os.environ.get("AGENT_SYNC_ID")
     if explicit:
         return explicit.strip()
 
-    sid = session_id or os.environ.get("CLAUDE_SESSION_ID")
+    sid = (
+        session_id
+        or os.environ.get("CLAUDE_CODE_SESSION_ID")
+        or os.environ.get("CLAUDE_SESSION_ID")
+    )
     if sid:
         base = f"{cwd or os.getcwd()}::{sid}"
         digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:12]

@@ -13,7 +13,7 @@ import argparse
 import os
 import sqlite3
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from . import __version__, db, hooks, locks, messages, paths, render, tasks
 from .errors import AgentSyncError
@@ -135,6 +135,22 @@ def cmd_claim_task(args: argparse.Namespace) -> int:
         agent_id = _acting_agent(conn)
         task = tasks.claim_task(conn, agent_id, args.task)
         print(f"Claimed task `{task.id}`: {task.title} [{task.status}]")
+    finally:
+        conn.close()
+    return 0
+
+
+def cmd_claim_next(args: argparse.Namespace) -> int:
+    conn = _open()
+    try:
+        agent_id = _acting_agent(conn)
+        task = tasks.claim_next_task(conn, agent_id)
+        if task is None:
+            print("No available tasks to claim.")
+            return 0
+        files = tasks.task_files(conn, task.id)
+        files_str = f"  files: {', '.join(files)}" if files else ""
+        print(f"Claimed task `{task.id}`: {task.title} [{task.status}]{files_str}")
     finally:
         conn.close()
     return 0
@@ -360,6 +376,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_claim = sub.add_parser("claim-task", help="Claim a task by id or title")
     p_claim.add_argument("task", metavar="TASK", help="Task id or title")
     p_claim.set_defaults(func=cmd_claim_task)
+
+    sub.add_parser(
+        "claim-next",
+        help="Claim the next available task automatically (highest priority first)",
+    ).set_defaults(func=cmd_claim_next)
 
     p_done = sub.add_parser("complete-task", help="Mark a task done")
     p_done.add_argument("task", metavar="TASK", help="Task id or title")

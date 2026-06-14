@@ -1,5 +1,10 @@
 # claude-agent-sync
 
+[![Release](https://github.com/denfry/agent-sync/actions/workflows/release.yml/badge.svg)](https://github.com/denfry/agent-sync/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/denfry/agent-sync?sort=semver)](https://github.com/denfry/agent-sync/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 **Coordinate multiple Claude Code sessions running in the same repository.**
 
 `claude-agent-sync` gives independent Claude Code sessions a shared, local

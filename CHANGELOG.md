@@ -1,10 +1,14 @@
 # Changelog
 
-All notable changes to this project are documented here. The format is based on
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here. This project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries below the
+marker are generated automatically from [Conventional Commits](https://www.conventionalcommits.org/)
+by [Python Semantic Release](https://python-semantic-release.readthedocs.io/) — do
+not edit them by hand.
 
-## 0.1.0 - Unreleased
+<!-- version list -->
+
+## v0.1.0 (2026-06-14)
 
 - Initial public MVP.
 - Stdlib-only `agent-sync` CLI backed by a per-repo SQLite database at

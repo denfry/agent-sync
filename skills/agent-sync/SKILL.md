@@ -15,6 +15,11 @@ so nobody clobbers anybody else's edits.
 **Always run `agent-sync status --compact` before you start working** and treat
 the result as authoritative about who else is active and which files are locked.
 
+Your identity is **detected automatically** from the active Claude Code session
+(via the `CLAUDE_CODE_SESSION_ID` it exports), so every command you run below
+already acts as *this* window's agent — you do not need to set `AGENT_SYNC_ID`.
+A `register` once per session just gives you a friendly name and role.
+
 ## Current coordination state
 
 ```!
@@ -26,11 +31,19 @@ agent-sync status --compact
 
 ## The rules (follow these in order)
 
+0. **Register once** at the start of the session so others see a real name/role
+   (identity itself is already auto-detected — this only labels it):
+   - `agent-sync register --name backend --role "API + DB"`
 1. **Look first.** Run `agent-sync status --compact`. Note active agents, locked
-   files, and in-progress tasks.
-2. **Claim or create a task** before implementing, so others see what you own:
+   files, in-progress tasks, and any **available to claim** tasks it lists.
+2. **Get work automatically, or claim/create a specific task** before
+   implementing, so others see what you own:
+   - `agent-sync claim-next` — auto-assigns you the highest-priority available
+     task (and reclaims tasks abandoned by crashed sessions). Prefer this when
+     you just need "the next thing to do" — it is how work distributes itself
+     across sessions without a human dealing it out.
    - `agent-sync create-task "Title" --description "..." --file path/a --file path/b`
-   - `agent-sync claim-task "Title or task-id"`
+   - `agent-sync claim-task "Title or task-id"` — when you want a *specific* one.
 3. **Lock files before editing them:**
    - `agent-sync lock path/to/file --reason "what you're changing"`
    - Locks have a 60-minute TTL by default and auto-expire.
@@ -58,10 +71,21 @@ agent-sync status --compact
 Start of a work session:
 
 ```bash
-agent-sync status
+agent-sync register --name frontend --role "React UI"
+agent-sync status --compact
 agent-sync create-task "Implement login form" --file src/login.tsx
 agent-sync claim-task "Implement login form"
 agent-sync lock src/login.tsx --reason "building the form"
+```
+
+Automatic distribution (let the queue hand you work, no human dealing tasks):
+
+```bash
+agent-sync register --name worker-a --role "general"
+agent-sync claim-next            # -> "Claimed task `task-...`: <title>"
+# ...do the work, locking files you touch...
+agent-sync complete-task task-...
+agent-sync claim-next            # grab the next one; "No available tasks" when drained
 ```
 
 Announcing a breaking change:

@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from sqlite3 import Row
 
-
 # --- Agent statuses ---------------------------------------------------------
 AGENT_ACTIVE = "active"
 AGENT_IDLE = "idle"
@@ -44,7 +43,7 @@ class Agent:
     last_seen: str
 
     @classmethod
-    def from_row(cls, row: Row) -> "Agent":
+    def from_row(cls, row: Row) -> Agent:
         return cls(
             id=row["id"],
             name=row["name"],
@@ -71,7 +70,7 @@ class Task:
     completed_at: str | None
 
     @classmethod
-    def from_row(cls, row: Row) -> "Task":
+    def from_row(cls, row: Row) -> Task:
         return cls(
             id=row["id"],
             title=row["title"],
@@ -94,7 +93,7 @@ class Lock:
     expires_at: str
 
     @classmethod
-    def from_row(cls, row: Row) -> "Lock":
+    def from_row(cls, row: Row) -> Lock:
         return cls(
             file_path=row["file_path"],
             owner_agent_id=row["owner_agent_id"],
@@ -114,7 +113,7 @@ class Message:
     read_at: str | None
 
     @classmethod
-    def from_row(cls, row: Row) -> "Message":
+    def from_row(cls, row: Row) -> Message:
         return cls(
             id=row["id"],
             sender_agent_id=row["sender_agent_id"],
@@ -133,7 +132,7 @@ class Decision:
     created_at: str
 
     @classmethod
-    def from_row(cls, row: Row) -> "Decision":
+    def from_row(cls, row: Row) -> Decision:
         return cls(
             id=row["id"],
             agent_id=row["agent_id"],
@@ -153,7 +152,7 @@ class Activity:
     created_at: str
 
     @classmethod
-    def from_row(cls, row: Row) -> "Activity":
+    def from_row(cls, row: Row) -> Activity:
         return cls(
             id=row["id"],
             agent_id=row["agent_id"],

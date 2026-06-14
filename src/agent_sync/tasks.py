@@ -9,7 +9,7 @@ by anyone else.
 from __future__ import annotations
 
 import sqlite3
-from typing import Sequence
+from collections.abc import Sequence
 
 from . import db
 from .errors import NotFound, TaskConflict
@@ -136,6 +136,62 @@ def claim_task(conn: sqlite3.Connection, agent_id: str, identifier: str) -> Task
             (task.id, moment.isoformat(), agent_id),
         )
     return get_task(conn, task.id)
+
+
+def claim_next_task(
+    conn: sqlite3.Connection,
+    agent_id: str,
+    *,
+    include_abandoned: bool = True,
+) -> Task | None:
+    """Atomically claim the best available task for *agent_id*.
+
+    This is the automatic distribution primitive: instead of naming a task, an
+    agent calls this to be handed the next unit of work. Selection order is
+    ``priority`` (high first), then oldest ``created_at`` as a tiebreak.
+
+    A task is *available* when it is ``pending`` (nobody owns it) or — when
+    *include_abandoned* is set — ``in_progress`` but its owner is no longer an
+    active agent, so a crashed session's work is automatically redistributed.
+    ``blocked``, ``done`` and ``cancelled`` tasks are never auto-claimed, and a
+    task already owned by *agent_id* is skipped (you already have it).
+
+    Returns the claimed :class:`Task`, or ``None`` when nothing is available.
+    """
+    moment = db.now()
+    with db.transaction(conn):
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status IN (?, ?) "
+            "ORDER BY priority DESC, created_at",
+            (TASK_PENDING, TASK_IN_PROGRESS),
+        ).fetchall()
+        chosen: Task | None = None
+        for row in rows:
+            task = Task.from_row(row)
+            if task.owner_agent_id == agent_id:
+                continue  # already mine — nothing to hand over
+            if not task.owner_agent_id:
+                chosen = task  # unowned pending work: take it
+                break
+            if include_abandoned:
+                owner = db.get_agent(conn, task.owner_agent_id)
+                if not db.is_active(owner, at=moment):
+                    chosen = task  # owner went stale/offline: reclaim it
+                    break
+        if chosen is None:
+            return None
+        conn.execute(
+            """UPDATE tasks
+               SET owner_agent_id = ?, status = ?, updated_at = ?
+               WHERE id = ?""",
+            (agent_id, TASK_IN_PROGRESS, moment.isoformat(), chosen.id),
+        )
+        conn.execute(
+            "UPDATE agents SET current_task_id = ?, last_seen = ? WHERE id = ?",
+            (chosen.id, moment.isoformat(), agent_id),
+        )
+        chosen_id = chosen.id
+    return get_task(conn, chosen_id)
 
 
 def complete_task(conn: sqlite3.Connection, agent_id: str, identifier: str) -> Task:
