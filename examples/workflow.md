@@ -9,7 +9,7 @@ them in one shell.
 ## 0. One-time setup
 
 ```bash
-pip install claude-agent-sync
+pip install "git+https://github.com/denfry/agent-sync"
 python skills/agent-sync/scripts/install.py --write-settings   # installs skill + hooks
 agent-sync init
 ```
@@ -73,7 +73,18 @@ AGENT_SYNC_ID=backend agent-sync decision \
     "Auth token is returned in the response body, not a header"
 ```
 
-The frontend agent sees it:
+In a real Claude Code session the frontend agent does **not** have to remember to
+check — with the hooks installed, the broadcast is pushed into its context at the
+start of its next turn (`UserPromptSubmit`). And if backend had addressed it
+*directly*…
+
+```bash
+AGENT_SYNC_ID=backend agent-sync send --to frontend \
+    --message "Heads up: login response shape changed — see the decision log"
+```
+
+…the frontend session's `Stop` hook would refuse to let it end the turn until it
+reacted to that message. You can also pull messages manually at any time:
 
 ```bash
 AGENT_SYNC_ID=frontend agent-sync inbox

@@ -85,6 +85,18 @@ CREATE TABLE IF NOT EXISTS messages (
     read_at         TEXT
 );
 
+-- Per-recipient push delivery. ``read_at`` on a message is a single global
+-- acknowledgement flag, but a broadcast (recipient ``all``/a role) reaches many
+-- agents, so "has this been pushed into *that* agent's context yet?" needs its
+-- own per-(message, agent) record. The push hooks insert a row here once they
+-- inject a message so the same message is never re-pushed to the same agent.
+CREATE TABLE IF NOT EXISTS message_deliveries (
+    message_id   TEXT NOT NULL,
+    agent_id     TEXT NOT NULL,
+    delivered_at TEXT NOT NULL,
+    PRIMARY KEY (message_id, agent_id)
+);
+
 CREATE TABLE IF NOT EXISTS decisions (
     id         TEXT PRIMARY KEY,
     agent_id   TEXT NOT NULL,
@@ -105,6 +117,7 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE INDEX IF NOT EXISTS idx_task_files_task ON task_files(task_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at);
+CREATE INDEX IF NOT EXISTS idx_deliveries_agent ON message_deliveries(agent_id);
 """
 
 TABLE_NAMES = (
@@ -113,6 +126,7 @@ TABLE_NAMES = (
     "task_files",
     "locks",
     "messages",
+    "message_deliveries",
     "decisions",
     "activity",
 )

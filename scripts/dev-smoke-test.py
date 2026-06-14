@@ -13,6 +13,7 @@ Usage::
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -22,7 +23,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from agent_sync import cli, hooks  # noqa: E402
+from agent_sync import cli, console, db, hooks, locks  # noqa: E402
+from agent_sync.models import OPERATOR_ID  # noqa: E402
 
 FAILURES: list[str] = []
 
@@ -67,6 +69,34 @@ def main() -> int:
     blocked = hooks.hook_pre_tool_use(payload)
     check("pre-tool-use blocks locked file", blocked, 2)
     print("  (payload was: " + json.dumps(payload) + ")")
+
+    print("\n# Live messaging push (backend -> frontend)")
+    run_as("agent-backend", ["send", "--to", "frontend", "--message", "API contract changed"])
+    os.environ["AGENT_SYNC_ID"] = "agent-frontend"
+    stop_payload = {"session_id": "s1", "cwd": str(tmp)}
+    out = io.StringIO()
+    hooks.hook_stop(stop_payload, out=out)
+    decision = json.loads(out.getvalue() or "{}").get("decision")
+    check("stop hook blocks while a directed message is pending", decision, "block")
+    out2 = io.StringIO()
+    hooks.hook_stop(stop_payload, out=out2)
+    check("stop hook releases the turn after delivery", out2.getvalue(), "")
+
+    print("\n# Operator console logic (TTY-free: no prompt_toolkit needed)")
+    conn = db.connect()
+    console.ensure_operator(conn, name="boss")
+    state = console.ConsoleState()
+    console.poll_events(conn, state)  # prime
+    console.execute_command(conn, OPERATOR_ID, "send", "frontend hold off")
+    console.execute_command(conn, OPERATOR_ID, "lock", "src/shared.ts freeze")
+    events = console.poll_events(conn, state)
+    check("console feed reports the operator's lock", any("locked src/shared.ts" in e.text for e in events), True)
+    check("console lock is enforced", locks.active_lock_for(conn, "src/shared.ts") is not None, True)
+    console.execute_command(conn, OPERATOR_ID, "unlock", "src/shared.ts")
+    check("console unlock releases it", locks.active_lock_for(conn, "src/shared.ts"), None)
+    sanitized = console.sanitize_terminal("evil\x1b[2Jclear")
+    check("console strips ANSI from untrusted text", "\x1b" in sanitized, False)
+    conn.close()
 
     print("\n# Cleanup commands (as 'frontend')")
     check("complete-task", run_as("agent-frontend", ["complete-task", "Update login UI"]), 0)

@@ -33,6 +33,28 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/skills/agent-sync/scripts/agent-sync hook user-prompt-submit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/skills/agent-sync/scripts/agent-sync hook stop"
+          }
+        ]
+      }
     ]
   }
 }

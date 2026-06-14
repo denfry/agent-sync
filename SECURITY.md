@@ -2,7 +2,7 @@
 
 ## Scope and threat model
 
-`claude-agent-sync` is a **local coordination tool**. It stores project
+`agent-sync` is a **local coordination tool**. It stores project
 coordination metadata in a SQLite database inside your repository at
 `.claude/coordination/state.sqlite`.
 
@@ -61,6 +61,16 @@ ignored and never crashes your session. The single intentional exception is the
 file is locked by another active agent — that is the desired behaviour, blocking
 the conflicting edit. Because hooks execute shell commands configured in your
 `.claude/settings.json`, only enable hook commands you trust and have reviewed.
+
+The `user-prompt-submit` and `stop` hooks deliberately **inject messages written
+by other agents into your session's context** (the `stop` hook also blocks
+turn-end while a directed message is undelivered — an intentional block, not a
+failure; it still fails open on any error). That content is untrusted: it is
+authored by other agents/humans. Every pushed value is wrapped in an
+`<agent-sync-state trust="untrusted">` frame with newlines and frame delimiters
+neutralised, so a malicious message cannot forge scaffolding or break out of the
+data block — but a session should still treat message bodies as **data, not
+instructions**. This is the same trust boundary that applies to `status` output.
 
 ## Lock enforcement is advisory
 

@@ -7,7 +7,7 @@ the ``agent-sync`` console script being on ``PATH``. It simply delegates to
 ``agent_sync.cli:main``.
 
 The package must be importable. Either:
-  * install it once with ``pip install claude-agent-sync`` (recommended), or
+  * install it once (``pip install -e .`` from a clone), or
   * set ``PYTHONPATH`` to the project's ``src`` directory.
 """
 
@@ -19,7 +19,7 @@ import sys
 def _fail(message: str) -> "int":
     sys.stderr.write(
         "[agent-sync] " + message + "\n"
-        "Install it with `pip install claude-agent-sync` or add the project's "
+        "Install it with `pip install -e .` from a clone or add the project's "
         "`src/` directory to PYTHONPATH.\n"
     )
     return 1
