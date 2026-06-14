@@ -215,15 +215,25 @@ def resolve_agent_id(
     Order of precedence:
 
     1. ``AGENT_SYNC_ID`` environment variable (explicit override).
-    2. A deterministic hash of ``cwd`` + session id, so repeated calls within
-       one Claude Code session map to the same agent. The session id comes from
+    2. A deterministic hash of the Claude Code **session id**, so every call made
+       on behalf of one window maps to the same agent. The session id comes from
        the *session_id* argument (passed by hooks from their JSON payload) or,
        when called from the skill/CLI outside a hook, from the
        ``CLAUDE_CODE_SESSION_ID`` environment variable Claude Code exports into
        every shell it spawns (``CLAUDE_SESSION_ID`` is accepted as a legacy
        alias). This is what lets the skill auto-detect the active session: a hook
        and a skill CLI call in the *same* window resolve to the *same* agent id.
+
+       The id is intentionally derived from the session id **alone**, not the
+       cwd: session ids are globally unique and the coordination database is
+       already scoped to one repo, so adding cwd would only let differing path
+       spellings (``/tmp/x`` vs ``C:\\...\\x``, symlinks, trailing slashes)
+       between a hook payload and ``os.getcwd()`` split one window into two
+       agents — which would make a session block its *own* locked files.
     3. A persisted per-repo local id (``.claude/coordination/current-agent``).
+
+    *cwd* is still accepted (and recorded elsewhere on the agent row) but no
+    longer affects identity.
     """
     explicit = os.environ.get("AGENT_SYNC_ID")
     if explicit:
@@ -235,8 +245,7 @@ def resolve_agent_id(
         or os.environ.get("CLAUDE_SESSION_ID")
     )
     if sid:
-        base = f"{cwd or os.getcwd()}::{sid}"
-        digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:12]
+        digest = hashlib.sha1(sid.strip().encode("utf-8")).hexdigest()[:12]
         return f"agent-{digest}"
 
     return paths.read_or_create_local_agent_id()

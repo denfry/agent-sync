@@ -59,9 +59,11 @@ def test_resolve_agent_id_hook_payload_matches_skill_env(repo, monkeypatch):
     # The PreToolUse hook resolves identity from its JSON payload session_id,
     # while the skill resolves it from the env var. For the same window these
     # must be the SAME agent, or the hook would block the session's own edits.
+    # Crucially this must hold even when the hook reports a differently-spelled
+    # cwd than the skill's os.getcwd() — identity is the session id alone.
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-1")
-    from_env = db.resolve_agent_id(cwd="/repo")
-    from_hook = db.resolve_agent_id(session_id="sess-1", cwd="/repo")
+    from_env = db.resolve_agent_id(cwd="C:\\Users\\me\\repo")
+    from_hook = db.resolve_agent_id(session_id="sess-1", cwd="/tmp/repo")
     assert from_env == from_hook
 
 

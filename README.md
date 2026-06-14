@@ -147,6 +147,7 @@ See [`examples/workflow.md`](examples/workflow.md) for the full narrative.
 | `agent-sync tasks` | List all tasks. |
 | `agent-sync create-task "T" [--description D] [--file P ...] [--priority N]` | Create a task. |
 | `agent-sync claim-task T` | Claim a task by id or title. |
+| `agent-sync claim-next` | Auto-claim the next available task (highest priority first; reclaims tasks abandoned by crashed sessions). |
 | `agent-sync complete-task T` | Mark a task done. |
 | `agent-sync block-task T --reason R` | Mark a task blocked. |
 | `agent-sync lock FILE [--reason R] [--ttl MIN]` | Lock a file (default TTL 60 min). |
@@ -215,9 +216,13 @@ database concurrently. Add `.claude/coordination/` to your `.gitignore`
 - Coordination is **advisory**. The `PreToolUse` hook enforces locks for
   `Edit`/`Write`/`MultiEdit`, but a shell command (`sed`, `>`) can still bypass
   it. Locks are a cooperation tool, not OS-level file locking.
-- Identity is best-effort: derived from `AGENT_SYNC_ID`, else a hash of cwd +
-  session id, else a per-repo local id. Two sessions that share none of those may
-  look like one agent.
+- Identity is auto-detected per Claude Code session: it's `AGENT_SYNC_ID` if set,
+  else a hash of the session id (from a hook payload or the
+  `CLAUDE_CODE_SESSION_ID` env var Claude Code exports into every shell), else a
+  per-repo local id. Because hooks and the skill both key off the same session
+  id, they resolve to the same agent — so you never get blocked from editing a
+  file *you* locked. Outside Claude Code with none of those set, all sessions in
+  a repo share the local id and look like one agent.
 - Single-repo scope. There's no cross-repo or cross-machine coordination.
 - Not a message queue or a real-time bus — it's polled via `status`/`inbox`.
 
