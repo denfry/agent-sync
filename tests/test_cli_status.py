@@ -22,7 +22,8 @@ def test_compact_status_is_markdown_block(repo, monkeypatch, capsys):
     capsys.readouterr()
     assert cli.main(["status", "--compact"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("## agent-sync")
+    assert out.startswith('<agent-sync-state trust="untrusted">')
+    assert "## agent-sync" in out
     assert "active agents" in out
 
 

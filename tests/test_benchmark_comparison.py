@@ -72,6 +72,7 @@ def test_compact_renderer_is_smaller_and_still_complete(conn, capsys):
     assert sizes["compact"] < sizes["raw-json"]
 
     compact_output = next(out for label, out, _ in results if label == "compact")
-    assert compact_output.startswith("## agent-sync")
+    assert compact_output.startswith('<agent-sync-state trust="untrusted">')
+    assert "## agent-sync" in compact_output
     assert "active agents" in compact_output
     assert "locks" in compact_output
