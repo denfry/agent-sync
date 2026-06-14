@@ -8,6 +8,26 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.2.0 (2026-06-14)
+
+### Continuous Integration
+
+- Bump actions/checkout from 4.3.1 to 6.0.3 ([#2](https://github.com/denfry/agent-sync/pull/2),
+  [`9f8ecb2`](https://github.com/denfry/agent-sync/commit/9f8ecb23015b564cfea13263ad8e3917339f0d39))
+
+- Bump actions/setup-python from 5.6.0 to 6.2.0 ([#3](https://github.com/denfry/agent-sync/pull/3),
+  [`269e7b6`](https://github.com/denfry/agent-sync/commit/269e7b6c66d05e6877f02f780fcf68508e4e09ca))
+
+- Bump amannn/action-semantic-pull-request from 5.5.3 to 6.1.1
+  ([#1](https://github.com/denfry/agent-sync/pull/1),
+  [`0c6ef41`](https://github.com/denfry/agent-sync/commit/0c6ef41cfe7b8e722767202af1cd9c3f9a4a4bb9))
+
+### Features
+
+- **console**: Live operator console for watching and steering agents
+  ([`74bdd4c`](https://github.com/denfry/agent-sync/commit/74bdd4cdac25e4c8f64fbb846589d8295b2e76e9))
+
+
 ## v0.1.2 (2026-06-14)
 
 ### Bug Fixes
