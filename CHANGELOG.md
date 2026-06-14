@@ -8,6 +8,19 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.1.1 (2026-06-14)
+
+### Bug Fixes
+
+- Derive agent identity from session id alone, not cwd
+  ([`97ff5d7`](https://github.com/denfry/agent-sync/commit/97ff5d73256bed7e40e2b6f71ddfef64ce75f919))
+
+### Continuous Integration
+
+- Pin GitHub Actions to commit SHAs
+  ([`647a47b`](https://github.com/denfry/agent-sync/commit/647a47b76dc4ba374222a75751491f23b9f50990))
+
+
 ## v0.1.0 (2026-06-14)
 
 - Initial public MVP.
