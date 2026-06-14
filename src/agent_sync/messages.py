@@ -72,6 +72,69 @@ def unread_count(conn: sqlite3.Connection, agent_id: str) -> int:
     return len(inbox(conn, agent_id, unread_only=True))
 
 
+def recent_messages(conn: sqlite3.Connection, *, limit: int = 20) -> list[Message]:
+    """All recent messages regardless of recipient, newest first.
+
+    Unlike :func:`inbox` (scoped to one agent), this is the global stream the
+    live console tails so a human can watch every conversation between agents.
+    """
+    rows = conn.execute(
+        "SELECT * FROM messages ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return [Message.from_row(r) for r in rows]
+
+
+def undelivered(
+    conn: sqlite3.Connection, agent_id: str, *, directed_only: bool = False
+) -> list[Message]:
+    """Messages addressed to *agent_id* that have not yet been *pushed* to it.
+
+    "Delivered" here means "already injected into this agent's context by a push
+    hook", tracked per-(message, agent) in ``message_deliveries`` — distinct from
+    ``read_at``, which is the agent's explicit acknowledgement. The agent's own
+    outbound messages are excluded so it never gets its own broadcasts pushed
+    back. With *directed_only*, broadcasts (recipient ``all``) are skipped so only
+    messages aimed at this specific agent/name/role are returned — that is what
+    justifies interrupting the ``Stop`` hook, whereas broadcasts surface gently.
+    """
+    keys = _recipient_keys(conn, agent_id)
+    placeholders = ",".join("?" for _ in keys)
+    sql = (
+        f"SELECT m.* FROM messages m "
+        f"WHERE m.recipient IN ({placeholders}) "
+        f"AND m.sender_agent_id != ? "
+        f"AND NOT EXISTS ("
+        f"  SELECT 1 FROM message_deliveries d "
+        f"  WHERE d.message_id = m.id AND d.agent_id = ?)"
+    )
+    params: list[object] = [*keys, agent_id, agent_id]
+    if directed_only:
+        sql += " AND m.recipient != ?"
+        params.append(RECIPIENT_ALL)
+    sql += " ORDER BY m.created_at"
+    rows = conn.execute(sql, params).fetchall()
+    return [Message.from_row(r) for r in rows]
+
+
+def mark_delivered(
+    conn: sqlite3.Connection, agent_id: str, message_ids: list[str]
+) -> None:
+    """Record that *message_ids* were pushed into *agent_id*'s context.
+
+    Idempotent: re-marking an already-delivered message is a no-op, so a push
+    hook can call this freely without risking duplicate rows.
+    """
+    if not message_ids:
+        return
+    ts = db.now_iso()
+    with db.transaction(conn):
+        conn.executemany(
+            "INSERT OR IGNORE INTO message_deliveries "
+            "(message_id, agent_id, delivered_at) VALUES (?, ?, ?)",
+            [(mid, agent_id, ts) for mid in message_ids],
+        )
+
+
 def read_message(
     conn: sqlite3.Connection, agent_id: str, message_id: str
 ) -> Message:

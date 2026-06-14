@@ -1,4 +1,4 @@
-# Contributing to claude-agent-sync
+# Contributing to agent-sync
 
 Thanks for your interest! This is a small, dependency-free project and we'd like
 to keep it that way. The runtime uses **only the Python standard library**.
@@ -9,7 +9,7 @@ Requires Python 3.10+.
 
 ```bash
 git clone https://github.com/denfry/agent-sync
-cd claude-agent-sync
+cd agent-sync
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"                               # editable install + pytest
 ```

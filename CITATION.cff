@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use agent-sync in your work, please cite it using the metadata below."
+title: agent-sync
+abstract: >-
+  Coordinate multiple AI coding-agent sessions in one repository via a shared,
+  local SQLite coordination layer — file locks, a task board, presence, and
+  messaging — with a Claude Code skill and hooks, plus an agent-agnostic CLI.
+  No server, no network access, zero runtime dependencies.
+type: software
+authors:
+  - name: "agent-sync contributors"
+repository-code: "https://github.com/denfry/agent-sync"
+url: "https://github.com/denfry/agent-sync"
+license: MIT
+keywords:
+  - claude-code
+  - ai-agents
+  - multi-agent
+  - coordination
+  - file-locking
+  - cli

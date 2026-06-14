@@ -80,3 +80,21 @@ def test_compact_marks_current_agent(conn):
     _seed(conn)
     compact = render.render_compact(conn, "agent-a")
     assert "alice" in compact
+
+
+def test_operator_excluded_from_agent_counts(conn):
+    from agent_sync.models import OPERATOR_ID
+
+    db.ensure_agent(conn, "agent-a", name="alice")
+    db.ensure_agent(conn, OPERATOR_ID, name="operator", role="human operator")
+
+    compact = render.render_compact(conn, "agent-a")
+    # One real coordinating agent, even though the operator row is also active.
+    assert "active agents: 1" in compact
+    # The operator is not listed as another agent to coordinate with.
+    assert "- other active:" not in compact
+    assert "operator" not in compact
+
+    verbose = render.render_status(conn, "agent-a")
+    assert "## Agents (1 active / 1 total)" in verbose
+    assert "operator" not in verbose

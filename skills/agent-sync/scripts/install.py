@@ -25,8 +25,10 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 
 HOOK_EVENTS = {
     "SessionStart": ("", "agent-sync hook session-start"),
+    "UserPromptSubmit": ("", "agent-sync hook user-prompt-submit"),
     "PreToolUse": ("Edit|Write|MultiEdit", "agent-sync hook pre-tool-use"),
     "PostToolUse": ("Edit|Write|MultiEdit", "agent-sync hook post-tool-use"),
+    "Stop": ("", "agent-sync hook stop"),
     "SessionEnd": ("", "agent-sync hook session-end"),
 }
 
@@ -108,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nAdd these hooks to .claude/settings.json (or re-run with --write-settings):\n")
         print(json.dumps(_hook_block(), indent=2))
 
-    print("\nNext: `pip install claude-agent-sync` and run `agent-sync status`.")
+    print("\nNext: install agent-sync (`pip install -e .` from a clone) and run `agent-sync status`.")
     return 0
 
 

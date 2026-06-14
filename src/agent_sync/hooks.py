@@ -162,6 +162,104 @@ def hook_post_tool_use(
     return 0
 
 
+def hook_user_prompt_submit(
+    payload: dict,
+    *,
+    conn: sqlite3.Connection | None = None,
+    out: TextIO | None = None,
+) -> int:
+    """Push undelivered messages into the agent's context on each user turn.
+
+    The gentle half of "live" messaging: every time the user submits a prompt we
+    inject any messages other agents sent (directed *and* broadcast) that this
+    agent has not been shown yet, then mark them delivered so they are not
+    repeated. Output uses the ``UserPromptSubmit`` ``additionalContext`` form;
+    silence (empty stdout, exit 0) when there is nothing new. Fails open.
+    """
+    out = out if out is not None else sys.stdout
+    own = conn is None
+    try:
+        if conn is None:
+            conn = db.connect()
+        agent_id = _agent_id(payload)
+        db.heartbeat(conn, agent_id)
+        pending = messages.undelivered(conn, agent_id)
+        if not pending:
+            return 0
+        block = render.render_pushed_messages(conn, pending)
+        instruction = (
+            f"{len(pending)} new agent-sync message(s) arrived from other Claude "
+            f"Code sessions in this repository. Take them into account before you "
+            f"act, and reply with `agent-sync send --to <name> --message \"...\"` "
+            f"if a response is needed."
+        )
+        out.write(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": f"{instruction}\n\n{block}",
+                    }
+                }
+            )
+        )
+        # Mark delivered only after we have emitted them: if writing fails we
+        # would rather re-push next turn than silently drop a message.
+        messages.mark_delivered(conn, agent_id, [m.id for m in pending])
+    except Exception:
+        return 0
+    finally:
+        if own and conn is not None:
+            conn.close()
+    return 0
+
+
+def hook_stop(
+    payload: dict,
+    *,
+    conn: sqlite3.Connection | None = None,
+    out: TextIO | None = None,
+) -> int:
+    """Block the agent from ending its turn while a directed message is pending.
+
+    The forceful half of "live" messaging: if another agent addressed *this* one
+    specifically (by id, name or role — broadcasts are excluded) and the message
+    has not been pushed yet, return ``{"decision": "block", "reason": ...}`` so
+    Claude keeps going and reacts instead of stopping. ``stop_hook_active`` guards
+    against an infinite loop: once we have already forced a continuation we let
+    the next stop through. Fails open.
+    """
+    out = out if out is not None else sys.stdout
+    if payload.get("stop_hook_active") is True:
+        return 0  # already continued once on our account; don't loop
+    own = conn is None
+    try:
+        if conn is None:
+            conn = db.connect()
+        agent_id = _agent_id(payload)
+        db.heartbeat(conn, agent_id)
+        pending = messages.undelivered(conn, agent_id, directed_only=True)
+        if not pending:
+            return 0
+        block = render.render_pushed_messages(conn, pending)
+        instruction = (
+            f"Do not end your turn yet: {len(pending)} message(s) addressed to you "
+            f"arrived from other agent-sync sessions in this repository. Read and "
+            f"act on them now (reply via `agent-sync send` if needed) before you "
+            f"stop."
+        )
+        out.write(
+            json.dumps({"decision": "block", "reason": f"{instruction}\n\n{block}"})
+        )
+        messages.mark_delivered(conn, agent_id, [m.id for m in pending])
+    except Exception:
+        return 0
+    finally:
+        if own and conn is not None:
+            conn.close()
+    return 0
+
+
 def hook_session_end(
     payload: dict, *, conn: sqlite3.Connection | None = None
 ) -> int:
@@ -193,8 +291,10 @@ def hook_session_end(
 # Dispatch table used by the CLI ``hook`` subcommand.
 HANDLERS = {
     "session-start": hook_session_start,
+    "user-prompt-submit": hook_user_prompt_submit,
     "pre-tool-use": hook_pre_tool_use,
     "post-tool-use": hook_post_tool_use,
+    "stop": hook_stop,
     "session-end": hook_session_end,
 }
 

@@ -1,5 +1,5 @@
 {
-  "//": "Claude Code settings snippet enabling agent-sync coordination hooks. Merge the `hooks` block into your repo's .claude/settings.json. This variant assumes the `agent-sync` console script is on PATH (pip install claude-agent-sync). For a no-install variant that calls the skill script directly, see settings.skill-path.json below.",
+  "//": "Claude Code settings snippet enabling agent-sync coordination hooks. Merge the `hooks` block into your repo's .claude/settings.json. This variant assumes the `agent-sync` console script is on PATH (install agent-sync first; see the README). For a no-install variant that calls the skill script directly, see settings.skill-path.json below.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,17 @@
           {
             "type": "command",
             "command": "agent-sync hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-sync hook user-prompt-submit"
           }
         ]
       }
@@ -30,6 +41,17 @@
           {
             "type": "command",
             "command": "agent-sync hook post-tool-use"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agent-sync hook stop"
           }
         ]
       }

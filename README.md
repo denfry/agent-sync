@@ -1,17 +1,30 @@
-# claude-agent-sync
+# agent-sync
 
 [![Release](https://github.com/denfry/agent-sync/actions/workflows/release.yml/badge.svg)](https://github.com/denfry/agent-sync/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/denfry/agent-sync?sort=semver)](https://github.com/denfry/agent-sync/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
-**Coordinate multiple Claude Code sessions running in the same repository.**
+**Coordinate multiple AI coding-agent sessions running in the same repository.**
 
-`claude-agent-sync` gives independent Claude Code sessions a shared, local
-coordination layer so they can *see each other, claim tasks, lock files, exchange
-messages, log activity, and avoid edit conflicts* — with no server and no network
-access. It ships as a small stdlib-only Python CLI (`agent-sync`), a Claude Code
-**skill** (`/agent-sync`), and a set of Claude Code **hooks**.
+`agent-sync` gives independent CLI coding-agent sessions — Claude Code, and any
+other agent or shell — a shared, local coordination layer so they can *see each
+other, claim tasks, lock files, exchange messages, log activity, and avoid edit
+conflicts* — with no server and no network access. It ships as a small
+stdlib-only Python CLI (`agent-sync`), a Claude Code **skill** (`/agent-sync`),
+and a set of Claude Code **hooks** — and the agent-agnostic CLI works from any
+tool.
+
+> **Works with:** Claude Code (skill + hooks today) · any other CLI agent or
+> shell via the `agent-sync` command · Python 3.10+ · macOS · Linux · Windows.
+
+## Contents
+
+[Problem](#the-problem) · [Solution](#the-solution) · [Features](#features) ·
+[Install](#install) · [Quickstart](#quickstart) · [Example](#example-three-agents) ·
+[Commands](#commands) · [Hooks](#hook-setup) · [Storage](#data-storage) ·
+[Safety](#safety-model) · [Limitations](#limitations) · [Roadmap](#roadmap) ·
+[Comparison](#comparison) · [FAQ](#faq) · [Contributing](#contributing)
 
 ---
 
@@ -36,8 +49,10 @@ acts as shared memory for every session, exposed through:
 1. **A CLI** — `agent-sync` — for agents (and humans) to read and update state.
 2. **A skill** — `/agent-sync` — that teaches Claude *when and how* to coordinate.
 3. **Hooks** — a `PreToolUse` hook that **blocks an edit to a file another active
-   agent has locked** (exit code 2), plus `SessionStart`/`PostToolUse`/`SessionEnd`
-   hooks for presence, activity logging, and cleanup.
+   agent has locked** (exit code 2), `UserPromptSubmit`/`Stop` hooks that **push
+   messages from other agents into this session's context** (so they can't be
+   ignored), plus `SessionStart`/`PostToolUse`/`SessionEnd` hooks for presence,
+   activity logging, and cleanup.
 
 ```text
    ┌────────────┐   ┌────────────┐   ┌────────────┐
@@ -58,25 +73,42 @@ acts as shared memory for every session, exposed through:
   active agent can't be stolen.
 - 👥 **Presence** — agents register and heartbeat; stale and offline agents decay
   automatically and stop holding locks.
-- ✉️ **Messaging** — send to an agent, a name, a role, or `all`; per-agent inbox
-  with read state.
+- ✉️ **Messaging that reaches busy agents** — send to an agent, a name, a role,
+  or `all`. With the hooks installed, messages are **pushed into other sessions'
+  context**: injected on every prompt (`UserPromptSubmit`), and a message aimed
+  at a *specific* agent even blocks that agent's turn-end (`Stop`) until it reacts
+  — so a session deep in a task can't silently ignore it. Still a polled inbox
+  (`agent-sync inbox`) for everything else.
 - 🧠 **Decisions & activity log** — record architecture decisions and an audit
   trail of edits.
 - 🪝 **Hooks that actually enforce** — `PreToolUse` fails *closed* on a real lock
   conflict; everything else fails *open* so it never gets in your way.
-- 🧰 **Zero runtime dependencies** — pure Python standard library + SQLite.
+- 📺 **Live operator console** — `agent-sync console` streams who's doing what,
+  how agents talk to each other, and lets a human steer in real time (send
+  messages/directives, lock files to stop edits, drive the task board).
+- 🧰 **Zero runtime dependencies for the core** — the CLI and hooks are pure
+  Python standard library + SQLite. Only the live console needs an extra
+  (`pip install "claude-agent-sync[tui]"`).
 
 ## Install
 
 ```bash
-pip install claude-agent-sync          # from PyPI (or `pip install -e .` from a clone)
+# Once released to PyPI:
+pip install claude-agent-sync
+# Until then, install from source:
+pip install "git+https://github.com/denfry/agent-sync"
+# …or from a clone of this repo:
+pip install -e .
+
+# Optional: the live operator console (`agent-sync console`) needs the TUI extra:
+pip install "claude-agent-sync[tui]"     # or: pip install -e ".[tui]"
 ```
 
 Then install the skill and hooks into a repository:
 
 ```bash
 # from a clone of this project, run inside your target repo:
-python /path/to/claude-agent-sync/skills/agent-sync/scripts/install.py --write-settings
+python /path/to/agent-sync/skills/agent-sync/scripts/install.py --write-settings
 ```
 
 Or, working straight from a checkout without installing the package:
@@ -136,6 +168,54 @@ AGENT_SYNC_ID=backend agent-sync unlock src/api/auth.py
 
 See [`examples/workflow.md`](examples/workflow.md) for the full narrative.
 
+## Live console
+
+Besides the agent sessions, a human can open a live, interactive view of the
+whole coordination layer and steer it as it happens:
+
+```bash
+pip install "claude-agent-sync[tui]"   # one-time: the console needs this extra
+agent-sync console
+```
+
+```text
+agent-sync console — live coordination view. Type 'help', 'quit' to leave.
+agents (2 active / 2 total):
+  backend [active] API + DB
+  tests   [active] pytest + e2e
+locks (1):
+  src/api/auth.py → backend — writing /login
+------------------------------------------------------------
+12:01:03 act  backend      Edit src/api/auth.py
+12:01:04 msg  backend      →all: /login returns {token,user}
+12:01:06 who  frontend     joined [active]
+12:01:09 lock backend      released src/api/auth.py
+operator> directive all "freeze feature work — hotfix on main"
+directive -> 3 active agent(s)
+operator> lock src/api/auth.py refactor incoming
+locked src/api/auth.py (until 2026-06-14T13:01:00+00:00)
+```
+
+The feed tails new activity, inter-agent messages, presence changes, and lock
+events; the `operator>` prompt lets you act as a first-class participant:
+
+| Operator command | Effect |
+| --- | --- |
+| `send <to> <msg>` | Message an id/name/role/`all`. A **directed** message is pushed forcefully (the `Stop` hook makes that agent react before it can end its turn). |
+| `directive <to> <msg>` | Like `send`, but `directive all` fans out a *directed* copy to every active agent, so each is forced to react this turn. |
+| `lock <path> [reason]` | Lock a file — the `PreToolUse` hook blocks other agents' edits to it **immediately**, on their next attempt. The one truly real-time lever. |
+| `unlock <path>` | Release a lock (the operator can break anyone's). |
+| `task new\|done\|block` | Drive the task board (`task block <ref> :: <reason>`). |
+| `decision <text>` | Record a shared decision. |
+| `status` · `msgs` | Print a snapshot / recent messages. `help` lists everything. |
+
+The console acts as a reserved `operator` identity: it registers as active so
+its locks are enforced and its messages reach agents like any other, but it is
+kept out of the "active agents" count so it never looks like a code-editing peer.
+When you quit, the operator goes idle and its locks stop holding the repo.
+Influence reaches a *running* agent at its next turn (messages) or on its next
+edit (locks); there is no mid-tool-call interrupt — see [Limitations](#limitations).
+
 ## Commands
 
 | Command | What it does |
@@ -159,7 +239,8 @@ See [`examples/workflow.md`](examples/workflow.md) for the full narrative.
 | `agent-sync decision "..."` | Record a shared decision. |
 | `agent-sync log --type T --message M [--file P]` | Append an activity entry. |
 | `agent-sync gc` | Re-status stale agents and drop expired locks. |
-| `agent-sync hook {session-start,pre-tool-use,post-tool-use,session-end}` | Hook entry points (read JSON from stdin). |
+| `agent-sync console [--interval S] [--name N]` | Live operator console: stream activity and steer agents (needs the `tui` extra). |
+| `agent-sync hook {session-start,user-prompt-submit,pre-tool-use,post-tool-use,stop,session-end}` | Hook entry points (read JSON from stdin). |
 
 Run `agent-sync --help` or `agent-sync <command> --help` for details.
 
@@ -172,8 +253,10 @@ into your repo's `.claude/settings.json` (or run an installer with
 | Event | Matcher | Behaviour |
 | --- | --- | --- |
 | `SessionStart` | (all) | Register/heartbeat the agent; inject compact status into context. |
+| `UserPromptSubmit` | (all) | Push any undelivered messages (directed + broadcast) into context for this turn. |
 | `PreToolUse` | `Edit\|Write\|MultiEdit` | **Block (exit 2)** if the target file is locked by another active agent. |
 | `PostToolUse` | `Edit\|Write\|MultiEdit` | Log the successful edit to the activity feed. |
+| `Stop` | (all) | **Block turn-end** (`decision: block`) while a message addressed to *this* agent is still undelivered, so it reacts before stopping. |
 | `SessionEnd` | (all) | Mark the agent idle (locks are left to expire by default). |
 
 If `agent-sync` isn't on `PATH`, use
@@ -189,6 +272,8 @@ repo, created automatically on first use. Tables:
 - `tasks` + `task_files` — the task board and the files each task touches.
 - `locks` — one row per locked path, with owner and `expires_at` (TTL).
 - `messages` — sender, recipient (id/name/role/`all`), body, read state.
+- `message_deliveries` — per-(message, agent) record of which messages have been
+  pushed into which agent's context (so a broadcast reaches each agent once).
 - `decisions` — recorded decisions.
 - `activity` — an append-only audit log of edits and events.
 
@@ -207,7 +292,12 @@ database concurrently. Add `.claude/coordination/` to your `.gitignore`
   the edit blocked.
 - **TTLs prevent deadlock.** Locks expire (60 min default) and locks held by
   stale/offline agents are ignored, so a crashed session can't wedge the repo.
-- **Owner-only unlock.** Releasing someone else's lock requires `--force`.
+- **Owner-only unlock.** Releasing someone else's lock requires `--force` (the
+  operator console always uses force — the human is in charge).
+- **Untrusted text stays data.** State injected into an agent's LLM context is
+  wrapped in an `<agent-sync-state trust="untrusted">` frame; the live console
+  additionally strips control/ANSI bytes from agent-authored values before
+  printing them, so a hostile name or message can't hijack your terminal.
 - **No secrets.** Tasks, messages, and decisions are plaintext shared state — do
   not put tokens, passwords, or keys in them. See [SECURITY.md](SECURITY.md).
 
@@ -224,14 +314,20 @@ database concurrently. Add `.claude/coordination/` to your `.gitignore`
   file *you* locked. Outside Claude Code with none of those set, all sessions in
   a repo share the local id and look like one agent.
 - Single-repo scope. There's no cross-repo or cross-machine coordination.
-- Not a message queue or a real-time bus — it's polled via `status`/`inbox`.
+- Messaging is **pushed** by the `UserPromptSubmit`/`Stop` hooks (so a message
+  lands in another agent's context at its next prompt or turn-end), but it is not
+  a real-time bus: there's no mid-tool-call interrupt, and locks/tasks/presence
+  are still observed by polling `status`. Without the hooks installed (e.g. a bare
+  CLI agent), messaging falls back to a polled `inbox`.
 
 ## Roadmap
 
 - [ ] An MCP server exposing the same state as tools/resources (no hooks needed).
+- [ ] First-class adapters for other CLI agents (Cursor, Codex CLI, Gemini CLI).
 - [ ] Richer presence (per-agent current file, progress %).
 - [ ] Optional auto-release of locks on `SessionEnd`.
-- [ ] `agent-sync watch` for a live TUI.
+- [x] A live console for watching and steering agents — shipped as
+  [`agent-sync console`](#live-console).
 - [ ] Lock leases with renewal and configurable policies.
 
 ## Comparison
@@ -241,10 +337,10 @@ database concurrently. Add `.claude/coordination/` to your `.gitignore`
 | **Plain `CLAUDE.md`** | No (static text) | No | Trivial | Conventions, not coordination |
 | **Human relays chat** | In your head | No | None | 2 windows, low traffic |
 | **Git worktrees** | No (isolated trees) | Avoids conflicts by isolation | Medium | Big independent features |
-| **claude-agent-sync** | Yes (SQLite) | Yes (PreToolUse hook) | One install | Several agents, one repo |
+| **agent-sync** | Yes (SQLite) | Yes (PreToolUse hook) | One install | Several agents, one repo |
 | **Future MCP version** | Yes | Yes (tool-mediated) | MCP config | Same, server-mediated |
 
-`claude-agent-sync` composes with git worktrees: use worktrees to isolate big
+`agent-sync` composes with git worktrees: use worktrees to isolate big
 features and `agent-sync` to lock the shared/generated files they still touch.
 
 ## FAQ
@@ -260,8 +356,11 @@ gets a clear conflict error.
 owned by stale/offline agents are ignored immediately. Run `agent-sync gc` to
 clean up now.
 
-**Does this work outside Claude Code?** The CLI works anywhere Python runs. The
-hooks and skill are Claude Code-specific, but the coordination database isn't.
+**Does this work with agents other than Claude Code?** Yes. The `agent-sync` CLI
+works anywhere Python runs, so any CLI agent or shell can read and update the
+shared state. The bundled skill and hooks are Claude Code-specific today (other
+agents are on the [roadmap](#roadmap)), but the coordination database isn't tied
+to any one tool.
 
 **Will the hook block my own edits?** No — you can always edit files *you* have
 locked. It only blocks edits to files locked by *other active* agents.
@@ -271,6 +370,11 @@ locked. It only blocks edits to files locked by *other active* agents.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, running tests, coding
 conventions, and how to add commands and hooks. Security policy:
 [SECURITY.md](SECURITY.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+## Maintainer
+
+Built and maintained by [@denfry](https://github.com/denfry). Issues and pull
+requests welcome — start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

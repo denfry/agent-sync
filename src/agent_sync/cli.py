@@ -319,6 +319,14 @@ def cmd_gc(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_console(args: argparse.Namespace) -> int:
+    # Imported lazily so the optional TUI dependency is only needed by this one
+    # command; the rest of the CLI stays standard-library-only.
+    from . import console
+
+    return console.run(interval=args.interval, name=args.name)
+
+
 def cmd_hook(args: argparse.Namespace) -> int:
     return hooks.run_hook(args.event)
 
@@ -445,6 +453,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("gc", help="Re-status stale agents and drop expired locks").set_defaults(
         func=cmd_gc
     )
+
+    p_console = sub.add_parser(
+        "console",
+        help="Live console: watch agents in real time and steer them (needs the 'tui' extra)",
+    )
+    p_console.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="Seconds between refreshes (default: 1.0)",
+    )
+    p_console.add_argument(
+        "--name",
+        default=None,
+        help="Display name for you, the operator (default: 'operator')",
+    )
+    p_console.set_defaults(func=cmd_console)
 
     p_hook = sub.add_parser("hook", help="Run a Claude Code hook handler")
     p_hook.add_argument(

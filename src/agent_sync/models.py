@@ -29,6 +29,14 @@ TASK_OPEN_STATUSES = (TASK_PENDING, TASK_IN_PROGRESS, TASK_BLOCKED)
 # Recipient sentinel meaning "every agent".
 RECIPIENT_ALL = "all"
 
+# Reserved identity for a human watching/steering via the live console
+# (``agent-sync console``). It registers as a normal active agent so its locks
+# are enforced and its messages are pushed to agents like any other, but the
+# renderers filter it out of the *agent* sections so it never inflates the
+# "active agents" count or looks like a code-editing peer.
+OPERATOR_ID = "operator"
+OPERATOR_ROLE = "human operator"
+
 
 @dataclass
 class Agent:

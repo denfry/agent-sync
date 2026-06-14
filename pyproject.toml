@@ -3,14 +3,21 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
+# The GitHub repo, CLI command, and skill are all `agent-sync`, but that name is
+# taken on PyPI by an unrelated project, so the distribution publishes as
+# `claude-agent-sync` (trusted publishing is configured for it; see CONTRIBUTING.md).
 name = "claude-agent-sync"
 version = "0.1.2"
-description = "Coordinate multiple Claude Code sessions in the same repository with a shared SQLite coordination layer, a skill, and hooks."
+description = "Coordinate multiple AI coding-agent sessions in one repo: file locks, task board, presence, and messaging over shared SQLite. Claude Code skill + hooks included."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "claude-agent-sync contributors" }]
-keywords = ["claude", "claude-code", "agents", "coordination", "cli", "sqlite", "hooks"]
+authors = [{ name = "agent-sync contributors" }]
+keywords = [
+    "claude", "claude-code", "ai-agents", "agents", "multi-agent", "agentic",
+    "coordination", "file-locking", "concurrency", "cli", "sqlite", "hooks",
+    "cursor", "codex", "developer-tools",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -21,7 +28,10 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Build Tools",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control",
+    "Topic :: Utilities",
 ]
 # Runtime depends on the Python standard library only.
 dependencies = []
@@ -29,11 +39,16 @@ dependencies = []
 [project.urls]
 Homepage = "https://github.com/denfry/agent-sync"
 Repository = "https://github.com/denfry/agent-sync"
+Documentation = "https://github.com/denfry/agent-sync#readme"
 Issues = "https://github.com/denfry/agent-sync/issues"
 Changelog = "https://github.com/denfry/agent-sync/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.8"]
+# The core CLI and hooks are standard-library-only. The live operator console
+# (`agent-sync console`) is the one feature that needs a richer terminal stack;
+# it lives behind this extra so installing the package stays dependency-free.
+tui = ["prompt_toolkit>=3.0"]
+dev = ["pytest>=7.0", "ruff>=0.8", "prompt_toolkit>=3.0"]
 
 [project.scripts]
 agent-sync = "agent_sync.cli:main"
