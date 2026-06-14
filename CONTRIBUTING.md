@@ -143,9 +143,12 @@ publisher with:
 | Workflow name | `release.yml` |
 | Environment | `pypi` |
 
-No token goes into the repo. Until this is configured the `Publish to PyPI` job
-will fail (everything else — versioning, changelog, tag, GitHub Release — still
-succeeds); just re-run that job after registering the publisher.
+No token goes into the repo. Then **enable publishing** by setting the
+repository variable `PYPI_PUBLISH` to `true`
+(`gh variable set PYPI_PUBLISH --body true`, or *Settings → Secrets and variables
+→ Actions → Variables*). Until that variable is `true` the `Publish to PyPI` job
+is skipped, so releases stay green — versioning, changelog, tag, and the GitHub
+Release still happen on every qualifying commit.
 
 ## Reporting bugs / proposing features
 
