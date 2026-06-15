@@ -252,16 +252,26 @@ into your repo's `.claude/settings.json` (or run an installer with
 
 | Event | Matcher | Behaviour |
 | --- | --- | --- |
-| `SessionStart` | (all) | Register/heartbeat the agent; inject compact status into context. |
+| `SessionStart` | (all) | Register/heartbeat the agent; inject compact status into context. With `AGENT_SYNC_AUTO_CLAIM=1`, also hand a free agent its next task (`claim-next`). |
 | `UserPromptSubmit` | (all) | Push any undelivered messages (directed + broadcast) into context for this turn. |
 | `PreToolUse` | `Edit\|Write\|MultiEdit` | **Block (exit 2)** if the target file is locked by another active agent. |
 | `PostToolUse` | `Edit\|Write\|MultiEdit` | Log the successful edit to the activity feed. |
 | `Stop` | (all) | **Block turn-end** (`decision: block`) while a message addressed to *this* agent is still undelivered, so it reacts before stopping. |
-| `SessionEnd` | (all) | Mark the agent idle (locks are left to expire by default). |
+| `SessionEnd` | (all) | Mark the agent idle (locks are left to expire by default; set `AGENT_SYNC_AUTO_RELEASE_LOCKS=1` to release them immediately). |
 
 If `agent-sync` isn't on `PATH`, use
 [`examples/settings.skill-path.json`](examples/settings.skill-path.json), which
 calls the bundled launcher: `python .claude/skills/agent-sync/scripts/agent-sync ...`.
+
+**Opt-in behaviours.** Two flags are off by default; enable them by setting
+environment variables where the hooks run (for example an `"env"` block in
+`.claude/settings.json`):
+
+- `AGENT_SYNC_AUTO_CLAIM=1` — `SessionStart` pulls the next task from the queue
+  for any agent that isn't already working on one, so work distributes itself
+  without a human dealing it out.
+- `AGENT_SYNC_AUTO_RELEASE_LOCKS=1` — `SessionEnd` releases the agent's locks
+  immediately instead of leaving them to expire.
 
 ## Data storage
 

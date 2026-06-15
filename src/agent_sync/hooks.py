@@ -18,8 +18,8 @@ import sqlite3
 import sys
 from typing import TextIO
 
-from . import db, locks, messages, paths, render
-from .models import AGENT_IDLE, AGENT_OFFLINE
+from . import db, locks, messages, paths, render, tasks
+from .models import AGENT_IDLE, AGENT_OFFLINE, Task
 
 FILE_EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 
@@ -64,13 +64,52 @@ def _edited_path(payload: dict) -> str | None:
     return path if isinstance(path, str) and path else None
 
 
+def _maybe_auto_claim(conn: sqlite3.Connection, agent_id: str) -> Task | None:
+    """Hand a *free* agent its next task when auto-claim is enabled.
+
+    Opt-in via the ``AGENT_SYNC_AUTO_CLAIM`` environment variable (mirrors the
+    ``AGENT_SYNC_AUTO_RELEASE_LOCKS`` flag on ``SessionEnd``). Returns the claimed
+    task, or ``None`` when the flag is off, the agent already owns an in-progress
+    task, or nothing is available.
+
+    The busy-agent guard matters because Claude Code fires ``SessionStart`` again
+    on resume/clear/compact: without it, a session interrupted mid-task would
+    grab a *second* task on top of the one it is working on.
+    """
+    if not _truthy(os.environ.get("AGENT_SYNC_AUTO_CLAIM")):
+        return None
+    agent = db.get_agent(conn, agent_id)
+    if agent is not None and agent.current_task_id:
+        return None
+    return tasks.claim_next_task(conn, agent_id)
+
+
+def _auto_claim_note(task: Task) -> str:
+    """A short, trusted instruction telling the session it now owns *task*.
+
+    Only the generated task id (``task-<hash>``) is interpolated here; the
+    agent-authored title and file list stay inside the ``untrusted`` state frame
+    emitted by ``render_compact`` just below, so no other-agent text leaks into
+    this trusted line.
+    """
+    return (
+        f"agent-sync auto-claimed your next task `{task.id}` for this session "
+        f"(now in progress, details below). Start working on it.\n\n"
+    )
+
+
 def hook_session_start(
     payload: dict,
     *,
     conn: sqlite3.Connection | None = None,
     out: TextIO | None = None,
 ) -> int:
-    """Register/heartbeat the agent and emit compact status as added context."""
+    """Register/heartbeat the agent and emit compact status as added context.
+
+    With ``AGENT_SYNC_AUTO_CLAIM`` set, a free agent is also handed its next task
+    (the ``claim-next`` queue) so work distributes itself across sessions without
+    anyone having to deal it out.
+    """
     out = out if out is not None else sys.stdout
     own = conn is None
     try:
@@ -83,6 +122,9 @@ def hook_session_start(
             session_id=payload.get("session_id"),
             cwd=payload.get("cwd"),
         )
+        claimed = _maybe_auto_claim(conn, agent_id)
+        if claimed is not None:
+            out.write(_auto_claim_note(claimed))
         # Plain Markdown to stdout is added to the session context by Claude Code
         # for SessionStart hooks; this avoids depending on a specific JSON schema.
         out.write(render.render_compact(conn, agent_id))

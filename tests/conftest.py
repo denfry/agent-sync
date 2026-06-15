@@ -23,6 +23,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     monkeypatch.delenv("AGENT_SYNC_AUTO_RELEASE_LOCKS", raising=False)
+    monkeypatch.delenv("AGENT_SYNC_AUTO_CLAIM", raising=False)
     return tmp_path
 
 
