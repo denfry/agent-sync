@@ -8,6 +8,14 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.2.1 (2026-06-15)
+
+### Bug Fixes
+
+- Publish initial release to PyPI
+  ([`7ae656b`](https://github.com/denfry/agent-sync/commit/7ae656b82d663398e52c4bac493e3ec2636a17e4))
+
+
 ## v0.2.0 (2026-06-14)
 
 ### Continuous Integration
