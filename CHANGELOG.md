@@ -8,6 +8,22 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.3.0 (2026-06-15)
+
+### Documentation
+
+- Add PyPI badge and update install instructions
+  ([`bd34424`](https://github.com/denfry/agent-sync/commit/bd3442462cfcb8bbe19af34fc6e055f744dd3bdd))
+
+- Remove emoji and tighten README opening for SEO
+  ([`3e16323`](https://github.com/denfry/agent-sync/commit/3e16323563b2597004d7de61adb70ca59c46bec5))
+
+### Features
+
+- **hooks**: Auto-claim next task on SessionStart when AGENT_SYNC_AUTO_CLAIM is set
+  ([`f8d9a4f`](https://github.com/denfry/agent-sync/commit/f8d9a4f3fa4449a03d3a5744c01c272e43252653))
+
+
 ## v0.2.1 (2026-06-15)
 
 ### Bug Fixes
