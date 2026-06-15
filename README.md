@@ -2,6 +2,7 @@
 
 [![Release](https://github.com/denfry/agent-sync/actions/workflows/release.yml/badge.svg)](https://github.com/denfry/agent-sync/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/denfry/agent-sync?sort=semver)](https://github.com/denfry/agent-sync/releases)
+[![PyPI](https://img.shields.io/pypi/v/claude-agent-sync.svg)](https://pypi.org/project/claude-agent-sync/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 
@@ -93,11 +94,10 @@ acts as shared memory for every session, exposed through:
 ## Install
 
 ```bash
-# Once released to PyPI:
 pip install claude-agent-sync
-# Until then, install from source:
+# …or the latest unreleased code straight from source:
 pip install "git+https://github.com/denfry/agent-sync"
-# …or from a clone of this repo:
+# …or from a clone of this repo (editable, for development):
 pip install -e .
 
 # Optional: the live operator console (`agent-sync console`) needs the TUI extra:
