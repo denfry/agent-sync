@@ -8,12 +8,12 @@
 
 **Coordinate multiple AI coding-agent sessions running in the same repository.**
 
-`agent-sync` gives independent CLI coding-agent sessions — Claude Code, and any
-other agent or shell — a shared, local coordination layer so they can *see each
-other, claim tasks, lock files, exchange messages, log activity, and avoid edit
-conflicts* — with no server and no network access. It ships as a small
+agent-sync is a shared, local coordination layer for independent CLI
+coding-agent sessions — Claude Code, and any other agent or shell. It lets them
+*see each other, claim tasks, lock files, exchange messages, log activity, and
+avoid edit conflicts* — with no server and no network access. It ships as a small
 stdlib-only Python CLI (`agent-sync`), a Claude Code **skill** (`/agent-sync`),
-and a set of Claude Code **hooks** — and the agent-agnostic CLI works from any
+and a set of Claude Code **hooks**, and the agent-agnostic CLI works from any
 tool.
 
 > **Works with:** Claude Code (skill + hooks today) · any other CLI agent or
@@ -68,26 +68,26 @@ acts as shared memory for every session, exposed through:
 
 ## Features
 
-- 🔒 **File locks with TTL** — claim a file before editing; locks auto-expire
+- **File locks with TTL** — claim a file before editing; locks auto-expire
   after 60 minutes so a crashed session never blocks others forever.
-- ✅ **Task board** — create / claim / complete / block tasks; a task owned by an
+- **Task board** — create / claim / complete / block tasks; a task owned by an
   active agent can't be stolen.
-- 👥 **Presence** — agents register and heartbeat; stale and offline agents decay
+- **Presence** — agents register and heartbeat; stale and offline agents decay
   automatically and stop holding locks.
-- ✉️ **Messaging that reaches busy agents** — send to an agent, a name, a role,
+- **Messaging that reaches busy agents** — send to an agent, a name, a role,
   or `all`. With the hooks installed, messages are **pushed into other sessions'
   context**: injected on every prompt (`UserPromptSubmit`), and a message aimed
   at a *specific* agent even blocks that agent's turn-end (`Stop`) until it reacts
   — so a session deep in a task can't silently ignore it. Still a polled inbox
   (`agent-sync inbox`) for everything else.
-- 🧠 **Decisions & activity log** — record architecture decisions and an audit
+- **Decisions & activity log** — record architecture decisions and an audit
   trail of edits.
-- 🪝 **Hooks that actually enforce** — `PreToolUse` fails *closed* on a real lock
+- **Hooks that actually enforce** — `PreToolUse` fails *closed* on a real lock
   conflict; everything else fails *open* so it never gets in your way.
-- 📺 **Live operator console** — `agent-sync console` streams who's doing what,
+- **Live operator console** — `agent-sync console` streams who's doing what,
   how agents talk to each other, and lets a human steer in real time (send
   messages/directives, lock files to stop edits, drive the task board).
-- 🧰 **Zero runtime dependencies for the core** — the CLI and hooks are pure
+- **Zero runtime dependencies for the core** — the CLI and hooks are pure
   Python standard library + SQLite. Only the live console needs an extra
   (`pip install "claude-agent-sync[tui]"`).
 
