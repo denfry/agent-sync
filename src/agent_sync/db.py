@@ -31,12 +31,40 @@ from .models import (
 # An agent that has not checked in for this long is considered stale; longer
 # still and it is treated as offline. These thresholds drive conflict checks and
 # the ``gc`` command. They are intentionally generous because Claude Code
-# sessions can sit idle while a human reads output.
+# sessions can sit idle while a human reads output. They can be overridden per
+# environment via ``AGENT_SYNC_STALE_MINUTES`` / ``AGENT_SYNC_OFFLINE_MINUTES``
+# (read live by :func:`stale_after` / :func:`offline_after`).
 STALE_AFTER = timedelta(minutes=15)
 OFFLINE_AFTER = timedelta(minutes=120)
 
 # Default time-to-live for a file lock.
 DEFAULT_LOCK_TTL_MINUTES = 60
+
+
+def _minutes_env(name: str, default: timedelta) -> timedelta:
+    """Read a minutes-valued env override, falling back to *default*.
+
+    A missing, empty, non-numeric or non-positive value leaves the default in
+    place so a typo can never make every agent look permanently offline.
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        minutes = int(raw)
+    except ValueError:
+        return default
+    return timedelta(minutes=minutes) if minutes > 0 else default
+
+
+def stale_after() -> timedelta:
+    """How long without a check-in before an agent is treated as stale."""
+    return _minutes_env("AGENT_SYNC_STALE_MINUTES", STALE_AFTER)
+
+
+def offline_after() -> timedelta:
+    """How long without a check-in before an agent is treated as offline."""
+    return _minutes_env("AGENT_SYNC_OFFLINE_MINUTES", OFFLINE_AFTER)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
@@ -66,6 +94,16 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS task_files (
     task_id   TEXT NOT NULL,
     file_path TEXT NOT NULL
+);
+
+-- Task dependency edges: ``task_id`` cannot start until ``depends_on_id`` is
+-- done. "Blocked by a dependency" is *computed* from this table plus the
+-- dependency's status, not stored on the task, so completing a dependency
+-- automatically unblocks its dependents with no extra write.
+CREATE TABLE IF NOT EXISTS task_deps (
+    task_id       TEXT NOT NULL,
+    depends_on_id TEXT NOT NULL,
+    PRIMARY KEY (task_id, depends_on_id)
 );
 
 CREATE TABLE IF NOT EXISTS locks (
@@ -115,15 +153,29 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_files_task ON task_files(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_deps(task_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient);
 CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at);
 CREATE INDEX IF NOT EXISTS idx_deliveries_agent ON message_deliveries(agent_id);
 """
 
+# Additive columns introduced after the initial schema. Each is applied in place
+# via ``ALTER TABLE ... ADD COLUMN`` when missing, so an existing database opened
+# by a newer agent-sync upgrades itself with no data loss and no version table.
+# Keep this list as the single source of truth for post-v1 column evolution.
+MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # locks: distinguish a file-path lock from an arbitrary named/resource lock.
+    ("locks", "kind", "TEXT NOT NULL DEFAULT 'file'"),
+    # messages: optional threading parent and an explicit sender-visible ack.
+    ("messages", "reply_to", "TEXT"),
+    ("messages", "acked_at", "TEXT"),
+)
+
 TABLE_NAMES = (
     "agents",
     "tasks",
     "task_files",
+    "task_deps",
     "locks",
     "messages",
     "message_deliveries",
@@ -184,14 +236,37 @@ def connect(path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    """Create all tables and indexes if they do not already exist.
+    """Create all tables and indexes if they do not already exist, then migrate.
 
     ``executescript`` manages its own transaction (it issues an implicit COMMIT
     first), so it must not run inside our explicit ``transaction`` block. The
     statements are idempotent (``IF NOT EXISTS``), making this safe to call on
-    every connection.
+    every connection. ``_migrate`` then adds any columns introduced after the
+    initial schema, which ``CREATE TABLE IF NOT EXISTS`` alone cannot do.
     """
     conn.executescript(SCHEMA)
+    _migrate(conn)
+
+
+def _ensure_column(
+    conn: sqlite3.Connection, table: str, column: str, decl: str
+) -> bool:
+    """Add ``column`` to ``table`` if it is not present. Returns True if added.
+
+    ``table``/``column``/``decl`` come only from the in-process ``MIGRATIONS``
+    constant, never user input, so interpolating them into the DDL is safe.
+    """
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column in cols:
+        return False
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    return True
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Apply additive column migrations idempotently (see ``MIGRATIONS``)."""
+    for table, column, decl in MIGRATIONS:
+        _ensure_column(conn, table, column, decl)
 
 
 def table_exists(conn: sqlite3.Connection, name: str) -> bool:
@@ -263,6 +338,25 @@ def resolve_agent_id(
         return f"agent-{digest}"
 
     return paths.read_or_create_local_agent_id()
+
+
+def identity_source(session_id: str | None = None) -> str:
+    """Describe *how* :func:`resolve_agent_id` would resolve identity right now.
+
+    Mirrors the precedence in ``resolve_agent_id`` so ``agent-sync whoami`` can
+    tell an agent whether it is acting under an explicit ``AGENT_SYNC_ID`` (the
+    thing parallel subagents must set), the auto-detected session id, or the
+    per-repo fallback file.
+    """
+    if os.environ.get("AGENT_SYNC_ID"):
+        return "AGENT_SYNC_ID env var"
+    if (
+        session_id
+        or os.environ.get("CLAUDE_CODE_SESSION_ID")
+        or os.environ.get("CLAUDE_SESSION_ID")
+    ):
+        return "Claude Code session id"
+    return "per-repo local file"
 
 
 # --- agent records ----------------------------------------------------------
@@ -364,9 +458,9 @@ def effective_status(agent: Agent, *, at: datetime | None = None) -> str:
         return AGENT_OFFLINE
     moment = at or now()
     age = moment - parse_iso(agent.last_seen)
-    if age >= OFFLINE_AFTER:
+    if age >= offline_after():
         return AGENT_OFFLINE
-    if age >= STALE_AFTER:
+    if age >= stale_after():
         return AGENT_STALE
     return agent.status
 
