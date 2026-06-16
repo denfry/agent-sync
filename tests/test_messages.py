@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_sync import messages
+from agent_sync.errors import NotFound
 
 
 def test_send_and_receive_direct_by_name(conn, make_agent):
@@ -144,3 +147,42 @@ def test_delivery_is_independent_of_read_state(conn, make_agent):
     messages.mark_delivered(conn, "agent-b", [msg.id])
     # Pushed into context, but not explicitly acknowledged: still "unread".
     assert messages.unread_count(conn, "agent-b") == 1
+
+
+# --- reply threading & acknowledgement --------------------------------------
+def test_send_with_reply_to_threads_message(conn, make_agent):
+    make_agent("agent-a", name="alice")
+    make_agent("agent-b", name="bob")
+    parent = messages.send_message(conn, "agent-a", "bob", "ping")
+    reply = messages.send_message(conn, "agent-b", "alice", "pong", reply_to=parent.id)
+    assert reply.reply_to == parent.id
+
+
+def test_send_reply_to_unknown_message_raises(conn, make_agent):
+    make_agent("agent-a", name="alice")
+    with pytest.raises(NotFound):
+        messages.send_message(conn, "agent-a", "all", "x", reply_to="msg-nope")
+
+
+def test_ack_sets_acked_at(conn, make_agent):
+    make_agent("agent-a", name="alice")
+    make_agent("agent-b", name="bob")
+    msg = messages.send_message(conn, "agent-a", "bob", "hi")
+    assert msg.acked_at is None
+    acked = messages.ack_message(conn, "agent-b", msg.id)
+    assert acked.acked_at is not None
+
+
+def test_ack_is_idempotent(conn, make_agent):
+    make_agent("agent-a", name="alice")
+    make_agent("agent-b", name="bob")
+    msg = messages.send_message(conn, "agent-a", "bob", "hi")
+    first = messages.ack_message(conn, "agent-b", msg.id)
+    second = messages.ack_message(conn, "agent-b", msg.id)
+    assert first.acked_at == second.acked_at
+
+
+def test_ack_unknown_message_raises(conn, make_agent):
+    make_agent("agent-a", name="alice")
+    with pytest.raises(NotFound):
+        messages.ack_message(conn, "agent-a", "msg-nope")

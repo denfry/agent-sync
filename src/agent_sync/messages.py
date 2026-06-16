@@ -15,17 +15,32 @@ from .models import RECIPIENT_ALL, Activity, Decision, Message
 
 
 def send_message(
-    conn: sqlite3.Connection, sender_agent_id: str, recipient: str, body: str
+    conn: sqlite3.Connection,
+    sender_agent_id: str,
+    recipient: str,
+    body: str,
+    *,
+    reply_to: str | None = None,
 ) -> Message:
-    """Send *body* to *recipient* (an id, name, role, or ``all``)."""
+    """Send *body* to *recipient* (an id, name, role, or ``all``).
+
+    *reply_to*, when given, threads this message under an existing message id; it
+    must reference a real message (raises :class:`NotFound` otherwise).
+    """
     msg_id = db.new_id("msg")
     ts = db.now_iso()
     with db.transaction(conn):
+        if reply_to is not None:
+            parent = conn.execute(
+                "SELECT 1 FROM messages WHERE id = ?", (reply_to,)
+            ).fetchone()
+            if parent is None:
+                raise NotFound(f"No message with id {reply_to!r} to reply to")
         conn.execute(
             """INSERT INTO messages
-               (id, sender_agent_id, recipient, body, created_at, read_at)
-               VALUES (?, ?, ?, ?, ?, NULL)""",
-            (msg_id, sender_agent_id, recipient, body, ts),
+               (id, sender_agent_id, recipient, body, created_at, read_at, reply_to)
+               VALUES (?, ?, ?, ?, ?, NULL, ?)""",
+            (msg_id, sender_agent_id, recipient, body, ts, reply_to),
         )
     return get_message(conn, msg_id)
 
@@ -148,6 +163,28 @@ def read_message(
         if row["read_at"] is None:
             conn.execute(
                 "UPDATE messages SET read_at = ? WHERE id = ?",
+                (db.now_iso(), message_id),
+            )
+    return get_message(conn, message_id)
+
+
+def ack_message(
+    conn: sqlite3.Connection, agent_id: str, message_id: str
+) -> Message:
+    """Acknowledge a message (idempotent) so its *sender* can confirm receipt.
+
+    Distinct from ``read_at`` (which the recipient sets by viewing it): ``acked_at``
+    is an explicit "I have handled this" that closes the loop for whoever sent it.
+    """
+    with db.transaction(conn):
+        row = conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        ).fetchone()
+        if row is None:
+            raise NotFound(f"No message with id {message_id!r}")
+        if row["acked_at"] is None:
+            conn.execute(
+                "UPDATE messages SET acked_at = ? WHERE id = ?",
                 (db.now_iso(), message_id),
             )
     return get_message(conn, message_id)
