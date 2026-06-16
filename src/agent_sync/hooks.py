@@ -115,6 +115,11 @@ def hook_session_start(
     try:
         if conn is None:
             conn = db.connect()
+        # Sweep stale agents and expired/abandoned locks up front so a session
+        # that crashed last time never leaves its locks blocking this one until
+        # their TTL. Agents no longer need to remember a manual `gc`.
+        db.gc_agents(conn)
+        locks.gc_locks(conn)
         agent_id = _agent_id(payload)
         db.ensure_agent(
             conn,

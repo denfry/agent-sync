@@ -18,6 +18,7 @@ close the block early).
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 
@@ -212,6 +213,87 @@ def render_pushed_messages(
             f"{_safe(msg.body)}"
         )
     return _frame("\n".join(lines))
+
+
+# --- machine-readable output ------------------------------------------------
+def render_json(payload: object) -> str:
+    """Serialize *payload* as pretty JSON for programmatic consumers.
+
+    Unlike the Markdown renderers this is **not** wrapped in the untrusted-data
+    frame: ``--json`` output is consumed by the *calling* agent's own tooling to
+    make coordination decisions (is file X busy? are this task's deps done?), so
+    it should be structured data, not framed prose. JSON encoding already escapes
+    values, so an embedded string cannot break out of its field.
+    """
+    return json.dumps(payload, indent=2, default=str) + "\n"
+
+
+def status_payload(conn: sqlite3.Connection, current_agent_id: str) -> dict:
+    """Structured equivalent of :func:`render_compact` for ``status --json``.
+
+    Lets an agent decide coordination questions from structure instead of parsing
+    English: which agents are active, which paths/resources are locked, which
+    tasks are open or blocked by dependencies, and how many messages are unread.
+    """
+    from . import locks as locks_mod
+
+    moment = db.now()
+    agents = _coordinating_agents(conn)
+    active = [a for a in agents if db.effective_status(a, at=moment) == "active"]
+    me = db.get_agent(conn, current_agent_id)
+    live_locks = locks_mod.list_locks(conn, at=moment)
+    all_tasks = tasks.list_tasks(conn)
+    open_tasks = [t for t in all_tasks if t.status in TASK_OPEN_STATUSES]
+    unread = messages.inbox(conn, current_agent_id, unread_only=True)
+
+    return {
+        "you": {
+            "id": current_agent_id,
+            "name": me.name if me else None,
+            "status": db.effective_status(me, at=moment) if me else None,
+            "registered": me is not None,
+            "current_task_id": me.current_task_id if me else None,
+        },
+        "active_agent_count": len(active),
+        "agents": [
+            {
+                "id": a.id,
+                "name": a.name,
+                "role": a.role,
+                "status": db.effective_status(a, at=moment),
+            }
+            for a in agents
+        ],
+        "locks": [lock_payload(conn, lk) for lk in live_locks],
+        "open_task_count": len(open_tasks),
+        "tasks": [task_payload(conn, t) for t in all_tasks],
+        "unread": len(unread),
+    }
+
+
+def lock_payload(conn: sqlite3.Connection, lock) -> dict:
+    """Structured view of one lock, including the owner's display name."""
+    owner = db.get_agent(conn, lock.owner_agent_id)
+    data = lock.as_dict()
+    data["owner_name"] = owner.name if owner else lock.owner_agent_id
+    return data
+
+
+def task_payload(conn: sqlite3.Connection, task: Task) -> dict:
+    """Structured view of one task, including files, deps and dep-block state."""
+    data = task.as_dict()
+    data["files"] = tasks.task_files(conn, task.id)
+    data["depends_on"] = tasks.task_dependencies(conn, task.id)
+    data["blocked_by_deps"] = bool(tasks.unmet_dependencies(conn, task.id))
+    return data
+
+
+def message_payload(conn: sqlite3.Connection, msg: Message) -> dict:
+    """Structured view of one message, including the sender's display name."""
+    sender = db.get_agent(conn, msg.sender_agent_id)
+    data = msg.as_dict()
+    data["sender_name"] = sender.name if sender else msg.sender_agent_id
+    return data
 
 
 def render_compact(conn: sqlite3.Connection, current_agent_id: str) -> str:

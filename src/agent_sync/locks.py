@@ -9,12 +9,13 @@ by :func:`gc_locks`.
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime
 
 from . import db
 from .db import DEFAULT_LOCK_TTL_MINUTES
 from .errors import LockConflict
-from .models import Lock
+from .models import LOCK_FILE, Lock
 
 
 def active_lock_for(
@@ -45,11 +46,14 @@ def acquire_lock(
     *,
     reason: str | None = None,
     ttl_minutes: int = DEFAULT_LOCK_TTL_MINUTES,
+    kind: str = LOCK_FILE,
 ) -> Lock:
     """Acquire (or refresh) a lock on *file_path* for *agent_id*.
 
     Re-locking a file you already hold simply extends the TTL. Acquiring a file
-    held live by someone else raises :class:`LockConflict` (exit code 2).
+    held live by someone else raises :class:`LockConflict` (exit code 2). *kind*
+    distinguishes a normal file-path lock from an arbitrary named resource lock
+    (``LOCK_RESOURCE``); both share the ``locks`` table keyed by *file_path*.
     """
     moment = db.now()
     with db.transaction(conn):
@@ -76,17 +80,56 @@ def acquire_lock(
         created = moment.isoformat()
         expires = db.iso_in(ttl_minutes, _from=moment)
         conn.execute(
-            """INSERT INTO locks (file_path, owner_agent_id, reason, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO locks
+                   (file_path, owner_agent_id, reason, created_at, expires_at, kind)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(file_path) DO UPDATE SET
                    owner_agent_id = excluded.owner_agent_id,
                    reason = excluded.reason,
                    created_at = excluded.created_at,
-                   expires_at = excluded.expires_at""",
-            (file_path, agent_id, reason, created, expires),
+                   expires_at = excluded.expires_at,
+                   kind = excluded.kind""",
+            (file_path, agent_id, reason, created, expires, kind),
         )
     out = conn.execute("SELECT * FROM locks WHERE file_path = ?", (file_path,)).fetchone()
     return Lock.from_row(out)
+
+
+def acquire_lock_blocking(
+    conn: sqlite3.Connection,
+    agent_id: str,
+    file_path: str,
+    *,
+    reason: str | None = None,
+    ttl_minutes: int = DEFAULT_LOCK_TTL_MINUTES,
+    kind: str = LOCK_FILE,
+    wait_seconds: float,
+    poll_seconds: float = 0.5,
+) -> Lock:
+    """Like :func:`acquire_lock`, but wait up to *wait_seconds* for a busy lock.
+
+    The conflicting holder may finish (unlock), go stale, or let the lock expire;
+    we retry on a short interval until one of those frees it or the deadline
+    passes, in which case the final :class:`LockConflict` propagates (exit 2,
+    fail-closed contract preserved). The **CLI subprocess** does the sleeping, so
+    an agent issues a single blocking call rather than spinning retries itself.
+    """
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        try:
+            return acquire_lock(
+                conn,
+                agent_id,
+                file_path,
+                reason=reason,
+                ttl_minutes=ttl_minutes,
+                kind=kind,
+            )
+        except LockConflict:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(poll_seconds, remaining))
 
 
 def release_lock(

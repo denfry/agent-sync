@@ -6,6 +6,7 @@ import pytest
 
 from agent_sync import locks
 from agent_sync.errors import LockConflict
+from agent_sync.models import LOCK_FILE, LOCK_RESOURCE
 
 
 def test_lock_file(conn, make_agent):
@@ -83,3 +84,58 @@ def test_list_locks_only_shows_live_by_default(conn, make_agent):
     live = locks.list_locks(conn)
     assert [lock.file_path for lock in live] == ["live.ts"]
     assert len(locks.list_locks(conn, include_expired=True)) == 2
+
+
+# --- named / resource locks -------------------------------------------------
+def test_resource_lock_kind_is_persisted(conn, make_agent):
+    make_agent("agent-a")
+    lock = locks.acquire_lock(conn, "agent-a", "db-migrations", kind=LOCK_RESOURCE)
+    assert lock.kind == LOCK_RESOURCE and lock.is_resource
+    [stored] = locks.list_locks(conn)
+    assert stored.kind == LOCK_RESOURCE
+
+
+def test_resource_lock_does_not_block_unrelated_file(conn, make_agent):
+    make_agent("agent-a")
+    make_agent("agent-b")
+    locks.acquire_lock(conn, "agent-a", "db-migrations", kind=LOCK_RESOURCE)
+    # An unrelated file is still freely lockable by someone else.
+    other = locks.acquire_lock(conn, "agent-b", "src/app.py")
+    assert other.kind == LOCK_FILE
+    # But the same resource key conflicts for a different active agent.
+    with pytest.raises(LockConflict):
+        locks.acquire_lock(conn, "agent-b", "db-migrations", kind=LOCK_RESOURCE)
+
+
+# --- blocking acquire (lock --wait) -----------------------------------------
+def test_acquire_blocking_returns_immediately_when_free(conn, make_agent):
+    make_agent("agent-a")
+    lock = locks.acquire_lock_blocking(conn, "agent-a", "f.py", wait_seconds=5)
+    assert lock.owner_agent_id == "agent-a"
+
+
+def test_acquire_blocking_times_out_then_raises(conn, make_agent):
+    make_agent("agent-a")
+    make_agent("agent-b")
+    locks.acquire_lock(conn, "agent-a", "f.py")
+    with pytest.raises(LockConflict):
+        locks.acquire_lock_blocking(
+            conn, "agent-b", "f.py", wait_seconds=0.05, poll_seconds=0.01
+        )
+
+
+def test_acquire_blocking_succeeds_when_holder_releases(conn, make_agent, monkeypatch):
+    make_agent("agent-a")
+    make_agent("agent-b")
+    locks.acquire_lock(conn, "agent-a", "f.py")
+
+    # Simulate the holder releasing while agent-b is waiting: the first poll
+    # sleep frees the lock, so the next retry acquires it.
+    def fake_sleep(_seconds):
+        locks.release_lock(conn, "agent-a", "f.py", force=True)
+
+    monkeypatch.setattr(locks.time, "sleep", fake_sleep)
+    lock = locks.acquire_lock_blocking(
+        conn, "agent-b", "f.py", wait_seconds=5, poll_seconds=0.01
+    )
+    assert lock.owner_agent_id == "agent-b"

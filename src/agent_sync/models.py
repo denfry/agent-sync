@@ -7,8 +7,15 @@ shapes in one place makes the renderers and tests easy to reason about.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from sqlite3 import Row
+
+# --- Lock kinds -------------------------------------------------------------
+# A lock keyed by a repo-relative file path (the default, enforced by the
+# PreToolUse hook) versus an arbitrary named resource key (e.g. ``db-migrations``)
+# that agents agree on but that maps to no single file.
+LOCK_FILE = "file"
+LOCK_RESOURCE = "resource"
 
 # --- Agent statuses ---------------------------------------------------------
 AGENT_ACTIVE = "active"
@@ -50,6 +57,9 @@ class Agent:
     created_at: str
     last_seen: str
 
+    def as_dict(self) -> dict:
+        return asdict(self)
+
     @classmethod
     def from_row(cls, row: Row) -> Agent:
         return cls(
@@ -77,6 +87,9 @@ class Task:
     updated_at: str
     completed_at: str | None
 
+    def as_dict(self) -> dict:
+        return asdict(self)
+
     @classmethod
     def from_row(cls, row: Row) -> Task:
         return cls(
@@ -99,6 +112,14 @@ class Lock:
     reason: str | None
     created_at: str
     expires_at: str
+    kind: str = LOCK_FILE
+
+    @property
+    def is_resource(self) -> bool:
+        return self.kind == LOCK_RESOURCE
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
     @classmethod
     def from_row(cls, row: Row) -> Lock:
@@ -108,6 +129,7 @@ class Lock:
             reason=row["reason"],
             created_at=row["created_at"],
             expires_at=row["expires_at"],
+            kind=row["kind"] if "kind" in row.keys() else LOCK_FILE,
         )
 
 
@@ -119,9 +141,15 @@ class Message:
     body: str
     created_at: str
     read_at: str | None
+    reply_to: str | None = None
+    acked_at: str | None = None
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
     @classmethod
     def from_row(cls, row: Row) -> Message:
+        keys = row.keys()
         return cls(
             id=row["id"],
             sender_agent_id=row["sender_agent_id"],
@@ -129,6 +157,8 @@ class Message:
             body=row["body"],
             created_at=row["created_at"],
             read_at=row["read_at"],
+            reply_to=row["reply_to"] if "reply_to" in keys else None,
+            acked_at=row["acked_at"] if "acked_at" in keys else None,
         )
 
 
@@ -138,6 +168,9 @@ class Decision:
     agent_id: str
     body: str
     created_at: str
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
     @classmethod
     def from_row(cls, row: Row) -> Decision:
@@ -158,6 +191,9 @@ class Activity:
     tool_name: str | None
     file_path: str | None
     created_at: str
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
     @classmethod
     def from_row(cls, row: Row) -> Activity:

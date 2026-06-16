@@ -86,6 +86,14 @@ file lock:
 Locks reliably prevent *honest* collisions between cooperating agents; they do
 not contain a session that ignores them.
 
+## `append` writes to your working tree
+
+Almost every command only touches the coordination database. The exception is
+`agent-sync append`, which **writes to a file in your working tree** (after
+taking the lock on it). Like any agent action that edits files, only run it
+against paths you intend to modify; it appends arbitrary content (from
+`--content` or stdin) to the named file and creates parent directories as needed.
+
 ## Reporting a vulnerability
 
 If you discover a security issue, please **do not open a public issue**. Instead:

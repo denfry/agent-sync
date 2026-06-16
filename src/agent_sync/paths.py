@@ -13,6 +13,7 @@ real user home or working tree.
 from __future__ import annotations
 
 import os
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -23,13 +24,52 @@ CURRENT_AGENT_FILENAME = "current-agent"
 _MARKERS = (".git", ".claude")
 
 
+def _worktree_main_root(worktree_dir: Path) -> Path | None:
+    """Resolve the main worktree root for a *linked* git worktree, or ``None``.
+
+    In a linked worktree ``.git`` is a *file* pointing at the real gitdir, and the
+    coordination database must live with the **main** worktree so every worktree
+    of one repo shares a single ``state.sqlite`` (otherwise agents on different
+    branches never see each other — the very workflow the skill recommends).
+    ``git rev-parse --git-common-dir`` returns the shared ``.git`` directory
+    (e.g. ``/repo/.git``); its parent is the main worktree root. Returns ``None``
+    on any failure so the caller can fall back to the worktree dir itself.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=str(worktree_dir),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    if not out:
+        return None
+    common = Path(out)
+    if not common.is_absolute():
+        common = worktree_dir / common
+    try:
+        common = common.resolve()
+    except OSError:
+        return None
+    return common.parent if common.name == ".git" else common
+
+
 def repo_root(start: str | os.PathLike[str] | None = None) -> Path:
     """Return the repository root for *start* (defaults to the cwd).
 
     Resolution order:
 
     1. ``AGENT_SYNC_ROOT`` environment variable, if set.
-    2. The nearest ancestor containing a ``.git`` or ``.claude`` directory.
+    2. The nearest ancestor containing a ``.git`` or ``.claude`` marker. A linked
+       git worktree (``.git`` is a *file*) resolves to its **main** worktree so
+       all worktrees of one repo share a single coordination database.
     3. The starting directory itself, as a last resort.
     """
     override = os.environ.get("AGENT_SYNC_ROOT")
@@ -40,8 +80,14 @@ def repo_root(start: str | os.PathLike[str] | None = None) -> Path:
     base = base.resolve()
     for candidate in (base, *base.parents):
         for marker in _MARKERS:
-            if (candidate / marker).exists():
-                return candidate
+            marker_path = candidate / marker
+            if not marker_path.exists():
+                continue
+            if marker == ".git" and marker_path.is_file():
+                shared = _worktree_main_root(candidate)
+                if shared is not None:
+                    return shared
+            return candidate
     return base
 
 
