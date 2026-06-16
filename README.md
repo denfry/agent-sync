@@ -222,23 +222,27 @@ edit (locks); there is no mid-tool-call interrupt — see [Limitations](#limitat
 | --- | --- |
 | `agent-sync init` | Create the database and tables (auto-runs on any command). |
 | `agent-sync register --name N [--role R]` | Register / update the current agent. |
-| `agent-sync heartbeat` | Mark the current agent active now. |
-| `agent-sync status [--compact]` | Show agents, tasks, locks, messages, activity. |
-| `agent-sync tasks` | List all tasks. |
-| `agent-sync create-task "T" [--description D] [--file P ...] [--priority N]` | Create a task. |
-| `agent-sync claim-task T` | Claim a task by id or title. |
-| `agent-sync claim-next` | Auto-claim the next available task (highest priority first; reclaims tasks abandoned by crashed sessions). |
-| `agent-sync complete-task T` | Mark a task done. |
+| `agent-sync whoami [--json]` | Show your resolved agent id and how it was determined. |
+| `agent-sync heartbeat` | Mark the current agent active now (use during long quiet stretches to avoid going stale). |
+| `agent-sync status [--compact] [--json]` | Show agents, tasks, locks, messages, activity (`--json` for machine-readable state). |
+| `agent-sync tasks [--json]` | List all tasks. |
+| `agent-sync create-task "T" [--description D] [--file P ...] [--priority N] [--depends-on T ...]` | Create a task (optionally blocked on other tasks). |
+| `agent-sync claim-task T [--lock] [--force]` | Claim a task by id or title (`--lock` locks its files; `--force` overrides unmet dependencies). |
+| `agent-sync claim-next [--lock]` | Auto-claim the next available task (highest priority first; skips dependency-blocked tasks; reclaims tasks abandoned by crashed sessions). |
+| `agent-sync complete-task T` | Mark a task done (reports any dependents it unblocks). |
 | `agent-sync block-task T --reason R` | Mark a task blocked. |
-| `agent-sync lock FILE [--reason R] [--ttl MIN]` | Lock a file (default TTL 60 min). |
-| `agent-sync unlock FILE [--force]` | Release a lock (owner only, unless `--force`). |
-| `agent-sync locks [--all]` | List live locks (`--all` includes expired). |
-| `agent-sync send --to R --message M` | Send to an id, name, role, or `all`. |
-| `agent-sync inbox [--all]` | Show unread (or all) messages addressed to you. |
+| `agent-sync lock FILE [--reason R] [--ttl MIN] [--wait[=SEC]]` | Lock a file (default TTL 60 min; `--wait` blocks until free). |
+| `agent-sync lock --resource KEY [...]` | Lock an arbitrary named resource instead of a file path. |
+| `agent-sync unlock FILE \| --resource KEY [--force]` | Release a lock (owner only, unless `--force`). |
+| `agent-sync append FILE [--content T] [--wait[=SEC]] [--no-newline]` | Atomically append to a shared file under a lock (body from `--content` or stdin). |
+| `agent-sync locks [--all] [--json]` | List live locks (`--all` includes expired). |
+| `agent-sync send --to R --message M [--reply-to ID]` | Send to an id, name, role, or `all` (optionally threaded). |
+| `agent-sync inbox [--all] [--json]` | Show unread (or all) messages addressed to you. |
 | `agent-sync read-message ID` | Show a message and mark it read. |
+| `agent-sync ack ID` | Acknowledge a message so its sender knows it was handled. |
 | `agent-sync decision "..."` | Record a shared decision. |
-| `agent-sync log --type T --message M [--file P]` | Append an activity entry. |
-| `agent-sync gc` | Re-status stale agents and drop expired locks. |
+| `agent-sync log "message" [--type T] [--file P]` | Append an activity entry (message is positional; `--message` still accepted). |
+| `agent-sync gc` | Re-status stale agents and drop expired locks (also runs automatically on `SessionStart`). |
 | `agent-sync console [--interval S] [--name N]` | Live operator console: stream activity and steer agents (needs the `tui` extra). |
 | `agent-sync hook {session-start,user-prompt-submit,pre-tool-use,post-tool-use,stop,session-end}` | Hook entry points (read JSON from stdin). |
 
@@ -252,7 +256,7 @@ into your repo's `.claude/settings.json` (or run an installer with
 
 | Event | Matcher | Behaviour |
 | --- | --- | --- |
-| `SessionStart` | (all) | Register/heartbeat the agent; inject compact status into context. With `AGENT_SYNC_AUTO_CLAIM=1`, also hand a free agent its next task (`claim-next`). |
+| `SessionStart` | (all) | Garbage-collect stale agents/expired locks; register/heartbeat the agent; inject compact status into context. With `AGENT_SYNC_AUTO_CLAIM=1`, also hand a free agent its next task (`claim-next`). |
 | `UserPromptSubmit` | (all) | Push any undelivered messages (directed + broadcast) into context for this turn. |
 | `PreToolUse` | `Edit\|Write\|MultiEdit` | **Block (exit 2)** if the target file is locked by another active agent. |
 | `PostToolUse` | `Edit\|Write\|MultiEdit` | Log the successful edit to the activity feed. |
@@ -273,15 +277,30 @@ environment variables where the hooks run (for example an `"env"` block in
 - `AGENT_SYNC_AUTO_RELEASE_LOCKS=1` — `SessionEnd` releases the agent's locks
   immediately instead of leaving them to expire.
 
+**Tuning.** A couple of thresholds can be overridden via the environment:
+
+- `AGENT_SYNC_ID` — act as a specific agent id (set a distinct value per parallel
+  subagent so their locks stay mutually exclusive; otherwise identity is
+  auto-detected from the Claude Code session). `agent-sync whoami` shows the
+  resolved id and its source.
+- `AGENT_SYNC_STALE_MINUTES` / `AGENT_SYNC_OFFLINE_MINUTES` — how long without a
+  check-in before an agent is considered stale (default 15) / offline (default
+  120). Lower them for short-lived sessions, raise them for long quiet ones.
+- `AGENT_SYNC_ROOT` — force the coordination root directory (otherwise the repo
+  root is auto-discovered).
+
 ## Data storage
 
 All state lives in **`.claude/coordination/state.sqlite`** inside the target
 repo, created automatically on first use. Tables:
 
 - `agents` — id, name, role, session, cwd, status, current task, timestamps.
-- `tasks` + `task_files` — the task board and the files each task touches.
-- `locks` — one row per locked path, with owner and `expires_at` (TTL).
-- `messages` — sender, recipient (id/name/role/`all`), body, read state.
+- `tasks` + `task_files` + `task_deps` — the task board, the files each task
+  touches, and dependency edges between tasks.
+- `locks` — one row per locked path or named resource, with owner, `kind` and
+  `expires_at` (TTL).
+- `messages` — sender, recipient (id/name/role/`all`), body, read/ack state,
+  optional reply-to thread parent.
 - `message_deliveries` — per-(message, agent) record of which messages have been
   pushed into which agent's context (so a broadcast reaches each agent once).
 - `decisions` — recorded decisions.
