@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_sync import db, tasks
-from agent_sync.errors import TaskConflict
+from agent_sync import db, locks, tasks
+from agent_sync.errors import NotFound, TaskConflict
 
 
 def test_create_task_with_files(conn):
@@ -134,3 +134,83 @@ def test_claim_next_skips_blocked_and_done(conn, make_agent):
     tasks.claim_task(conn, "agent-a", t2.id)
     tasks.complete_task(conn, "agent-a", t2.id)
     assert tasks.claim_next_task(conn, "agent-a") is None
+
+
+# --- dependencies -----------------------------------------------------------
+def test_create_task_records_dependencies(conn):
+    dep = tasks.create_task(conn, "Dep")
+    main = tasks.create_task(conn, "Main", depends_on=[dep.id])
+    assert tasks.task_dependencies(conn, main.id) == [dep.id]
+    assert [d.id for d in tasks.unmet_dependencies(conn, main.id)] == [dep.id]
+
+
+def test_create_task_with_unknown_dependency_raises(conn):
+    with pytest.raises(NotFound):
+        tasks.create_task(conn, "Main", depends_on=["does-not-exist"])
+
+
+def test_depends_on_accepts_titles(conn):
+    tasks.create_task(conn, "Backend API")
+    main = tasks.create_task(conn, "Frontend", depends_on=["Backend API"])
+    assert len(tasks.task_dependencies(conn, main.id)) == 1
+
+
+def test_claim_next_skips_task_blocked_by_dependency(conn, make_agent):
+    make_agent("agent-a")
+    dep = tasks.create_task(conn, "Dep", priority=0)
+    tasks.create_task(conn, "Blocked", depends_on=[dep.id], priority=10)
+    # 'Blocked' outranks 'Dep' on priority but is skipped until the dep is done.
+    claimed = tasks.claim_next_task(conn, "agent-a")
+    assert claimed is not None and claimed.id == dep.id
+
+
+def test_completing_dependency_unblocks_dependent(conn, make_agent):
+    make_agent("agent-a")
+    dep = tasks.create_task(conn, "Dep")
+    dependent = tasks.create_task(conn, "Dependent", depends_on=[dep.id])
+    tasks.claim_task(conn, "agent-a", dep.id)
+    tasks.complete_task(conn, "agent-a", dep.id)
+    assert tasks.unmet_dependencies(conn, dependent.id) == []
+    assert [t.id for t in tasks.dependents_unblocked_by(conn, dep.id)] == [dependent.id]
+    # And it is now auto-claimable.
+    claimed = tasks.claim_next_task(conn, "agent-a")
+    assert claimed is not None and claimed.id == dependent.id
+
+
+def test_claim_task_refuses_unmet_dependency_without_force(conn, make_agent):
+    make_agent("agent-a")
+    dep = tasks.create_task(conn, "Dep")
+    dependent = tasks.create_task(conn, "Dependent", depends_on=[dep.id])
+    with pytest.raises(TaskConflict):
+        tasks.claim_task(conn, "agent-a", dependent.id)
+    forced = tasks.claim_task(conn, "agent-a", dependent.id, force=True)
+    assert forced.status == "in_progress"
+
+
+def test_cancelled_dependency_does_not_block(conn, make_agent):
+    make_agent("agent-a")
+    dep = tasks.create_task(conn, "Dep")
+    dependent = tasks.create_task(conn, "Dependent", depends_on=[dep.id])
+    with db.transaction(conn):
+        conn.execute("UPDATE tasks SET status = 'cancelled' WHERE id = ?", (dep.id,))
+    assert tasks.unmet_dependencies(conn, dependent.id) == []
+
+
+# --- auto-lock task files on claim ------------------------------------------
+def test_lock_task_files_locks_associated_files(conn, make_agent):
+    make_agent("agent-a")
+    task = tasks.create_task(conn, "T", files=["src/a.py", "src/b.py"])
+    tasks.claim_task(conn, "agent-a", task.id)
+    locked, conflicts = tasks.lock_task_files(conn, "agent-a", task.id)
+    assert set(locked) == {"src/a.py", "src/b.py"}
+    assert conflicts == []
+
+
+def test_lock_task_files_reports_conflicts_without_failing(conn, make_agent):
+    make_agent("agent-a")
+    make_agent("agent-b")
+    locks.acquire_lock(conn, "agent-b", "src/a.py")  # b already holds it
+    task = tasks.create_task(conn, "T", files=["src/a.py"])
+    locked, conflicts = tasks.lock_task_files(conn, "agent-a", task.id)
+    assert locked == []
+    assert len(conflicts) == 1

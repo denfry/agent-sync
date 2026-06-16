@@ -11,8 +11,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 
-from . import db
-from .errors import NotFound, TaskConflict
+from . import db, locks, paths
+from .errors import LockConflict, NotFound, TaskConflict
 from .models import (
     TASK_BLOCKED,
     TASK_CANCELLED,
@@ -22,6 +22,10 @@ from .models import (
     Task,
 )
 
+# A dependency no longer blocks once it is done or cancelled (cancelled work will
+# never complete, so waiting on it forever would deadlock the dependent).
+_DEP_RESOLVED_STATUSES = (TASK_DONE, TASK_CANCELLED)
+
 
 def create_task(
     conn: sqlite3.Connection,
@@ -30,11 +34,18 @@ def create_task(
     description: str | None = None,
     files: Sequence[str] | None = None,
     priority: int = 0,
+    depends_on: Sequence[str] | None = None,
 ) -> Task:
-    """Create a pending task and associate any *files* with it."""
+    """Create a pending task and associate any *files* and dependencies with it.
+
+    *depends_on* entries are task ids or titles, resolved up front so a typo
+    fails fast (:class:`NotFound`). The task is claimable only once every
+    dependency is done/cancelled (see :func:`unmet_dependencies`).
+    """
     task_id = db.new_id("task")
     ts = db.now_iso()
     with db.transaction(conn):
+        dep_ids = [find_task(conn, dep).id for dep in depends_on or ()]
         conn.execute(
             """INSERT INTO tasks
                (id, title, description, status, owner_agent_id, priority,
@@ -46,6 +57,12 @@ def create_task(
             conn.execute(
                 "INSERT INTO task_files (task_id, file_path) VALUES (?, ?)",
                 (task_id, path),
+            )
+        for dep_id in dep_ids:
+            conn.execute(
+                "INSERT OR IGNORE INTO task_deps (task_id, depends_on_id) "
+                "VALUES (?, ?)",
+                (task_id, dep_id),
             )
     return get_task(conn, task_id)
 
@@ -104,11 +121,90 @@ def task_files(conn: sqlite3.Connection, task_id: str) -> list[str]:
     return [r["file_path"] for r in rows]
 
 
-def claim_task(conn: sqlite3.Connection, agent_id: str, identifier: str) -> Task:
+def task_dependencies(conn: sqlite3.Connection, task_id: str) -> list[str]:
+    """Ids of the tasks *task_id* depends on (must finish first)."""
+    rows = conn.execute(
+        "SELECT depends_on_id FROM task_deps WHERE task_id = ? "
+        "ORDER BY depends_on_id",
+        (task_id,),
+    ).fetchall()
+    return [r["depends_on_id"] for r in rows]
+
+
+def unmet_dependencies(conn: sqlite3.Connection, task_id: str) -> list[Task]:
+    """Dependencies of *task_id* that are not yet resolved (done/cancelled).
+
+    A dangling dependency id (the referenced task was deleted) is treated as met
+    rather than blocking forever.
+    """
+    unmet: list[Task] = []
+    for dep_id in task_dependencies(conn, task_id):
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (dep_id,)).fetchone()
+        if row is None:
+            continue
+        dep = Task.from_row(row)
+        if dep.status not in _DEP_RESOLVED_STATUSES:
+            unmet.append(dep)
+    return unmet
+
+
+def dependents_unblocked_by(conn: sqlite3.Connection, task_id: str) -> list[Task]:
+    """Pending tasks that depend on *task_id* and now have all deps resolved.
+
+    Used after completing a task to surface work that just became claimable;
+    "blocked by deps" is computed, so no status flip is needed to unblock them.
+    """
+    rows = conn.execute(
+        "SELECT task_id FROM task_deps WHERE depends_on_id = ?", (task_id,)
+    ).fetchall()
+    unblocked: list[Task] = []
+    for r in rows:
+        dependent_id = r["task_id"]
+        if unmet_dependencies(conn, dependent_id):
+            continue
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (dependent_id,)
+        ).fetchone()
+        if row is not None and row["status"] == TASK_PENDING:
+            unblocked.append(Task.from_row(row))
+    return unblocked
+
+
+def lock_task_files(
+    conn: sqlite3.Connection, agent_id: str, task_id: str
+) -> tuple[list[str], list[str]]:
+    """Best-effort: lock every file associated with *task_id* for *agent_id*.
+
+    Paths are normalized to the same canonical form the PreToolUse hook checks, so
+    the locks actually guard edits. Returns ``(locked, conflicts)`` where
+    *conflicts* holds human-readable messages for files another active agent
+    already holds — the caller keeps the claim and just warns.
+    """
+    locked: list[str] = []
+    conflicts: list[str] = []
+    for raw in task_files(conn, task_id):
+        norm = paths.normalize_repo_path(raw)
+        try:
+            locks.acquire_lock(conn, agent_id, norm, reason=f"task {task_id}")
+            locked.append(norm)
+        except LockConflict as exc:
+            conflicts.append(exc.message)
+    return locked, conflicts
+
+
+def claim_task(
+    conn: sqlite3.Connection,
+    agent_id: str,
+    identifier: str,
+    *,
+    force: bool = False,
+) -> Task:
     """Claim a task for *agent_id*, moving it to ``in_progress``.
 
     Refuses if the task is already owned by a *different active* agent. Claiming
     a task you already own, or one whose previous owner has gone stale, is fine.
+    A task with unfinished dependencies is refused unless *force* is set, so work
+    is not started out of order by accident.
     """
     moment = db.now()
     with db.transaction(conn):
@@ -117,6 +213,14 @@ def claim_task(conn: sqlite3.Connection, agent_id: str, identifier: str) -> Task
             raise TaskConflict(
                 f"Task {task.id} is already {task.status} and cannot be claimed"
             )
+        if not force:
+            unmet = unmet_dependencies(conn, task.id)
+            if unmet:
+                names = ", ".join(f"{t.id} ({t.title!r})" for t in unmet)
+                raise TaskConflict(
+                    f"Task {task.id} depends on unfinished task(s): {names}. "
+                    f"Use --force to claim anyway."
+                )
         if task.owner_agent_id and task.owner_agent_id != agent_id:
             owner = db.get_agent(conn, task.owner_agent_id)
             if db.is_active(owner, at=moment):
@@ -153,8 +257,10 @@ def claim_next_task(
     A task is *available* when it is ``pending`` (nobody owns it) or — when
     *include_abandoned* is set — ``in_progress`` but its owner is no longer an
     active agent, so a crashed session's work is automatically redistributed.
-    ``blocked``, ``done`` and ``cancelled`` tasks are never auto-claimed, and a
-    task already owned by *agent_id* is skipped (you already have it).
+    ``blocked``, ``done`` and ``cancelled`` tasks are never auto-claimed, a task
+    with an unfinished dependency is skipped (and becomes claimable automatically
+    once the dependency completes), and a task already owned by *agent_id* is
+    skipped (you already have it).
 
     Returns the claimed :class:`Task`, or ``None`` when nothing is available.
     """
@@ -170,6 +276,8 @@ def claim_next_task(
             task = Task.from_row(row)
             if task.owner_agent_id == agent_id:
                 continue  # already mine — nothing to hand over
+            if unmet_dependencies(conn, task.id):
+                continue  # blocked by an unfinished dependency
             if not task.owner_agent_id:
                 chosen = task  # unowned pending work: take it
                 break
