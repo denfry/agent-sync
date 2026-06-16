@@ -8,6 +8,51 @@ not edit them by hand.
 
 <!-- version list -->
 
+## v0.4.0 (2026-06-16)
+
+### Bug Fixes
+
+- **paths**: Share one coordination DB across git worktrees
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+### Documentation
+
+- Document new coordination primitives and protocols
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+### Features
+
+- Coordination primitives — blocking locks, append, JSON, task DAG, worktree DB fix
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **cli**: Add append, whoami, JSON output, and wire all new flags
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **db**: Add migrations, task_deps, configurable staleness, identity source
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **hooks**: Garbage-collect stale state on SessionStart
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **locks**: Add blocking lock --wait and named resource locks
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **messages**: Add reply threading (--reply-to) and message ack
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+- **tasks**: Add task dependencies (DAG) and auto-lock files on claim
+  ([#5](https://github.com/denfry/agent-sync/pull/5),
+  [`ac15631`](https://github.com/denfry/agent-sync/commit/ac15631b5e8a8aa1c71f1088228ad9aed6238421))
+
+
 ## v0.3.0 (2026-06-15)
 
 ### Documentation
