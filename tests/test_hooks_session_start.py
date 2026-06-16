@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 
-from agent_sync import db, hooks, tasks
+from agent_sync import db, hooks, locks, tasks
 
 
 def _run(payload=None, *, conn):
@@ -76,3 +76,14 @@ def test_auto_claim_is_noop_when_no_tasks(conn, monkeypatch):
 def test_session_start_never_blocks_on_empty_payload(conn):
     code, _ = _run({}, conn=conn)
     assert code == 0
+
+
+def test_session_start_gcs_stale_locks(conn, monkeypatch):
+    monkeypatch.setenv("AGENT_SYNC_ID", "me")
+    # A previous (now crashed) session left an expired lock behind.
+    db.ensure_agent(conn, "ghost")
+    locks.acquire_lock(conn, "ghost", "src/x.py", ttl_minutes=-1)
+    code, _ = _run(conn=conn)
+    assert code == 0
+    # gc ran at session start, so the stale lock is gone for the new session.
+    assert locks.list_locks(conn, include_expired=True) == []
