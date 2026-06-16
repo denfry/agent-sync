@@ -54,3 +54,25 @@ def test_no_command_prints_help(repo, capsys):
     assert cli.main([]) == 1
     out = capsys.readouterr().out
     assert "usage:" in out.lower()
+
+
+def test_whoami_reports_identity_and_source(repo, monkeypatch, capsys):
+    monkeypatch.setenv("AGENT_SYNC_ID", "agent-x")
+    cli.main(["register", "--name", "frontend", "--role", "React UI"])
+    capsys.readouterr()
+    assert cli.main(["whoami"]) == 0
+    out = capsys.readouterr().out
+    assert "agent-x" in out
+    assert "AGENT_SYNC_ID" in out  # tells the agent it is acting under an explicit id
+    assert "frontend" in out
+
+
+def test_whoami_json_when_unregistered(repo, monkeypatch, capsys):
+    import json
+
+    monkeypatch.setenv("AGENT_SYNC_ID", "agent-x")
+    assert cli.main(["whoami", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["id"] == "agent-x"
+    assert data["registered"] is False
+    assert "AGENT_SYNC_ID" in data["resolved_via"]
